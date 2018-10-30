@@ -754,23 +754,6 @@ def _get_compressor(compress_type, compresslevel=None):
         return None
 
 
-def _get_decompressor(compress_type):
-    if compress_type == ZIP_STORED:
-        return None
-    elif compress_type == ZIP_DEFLATED:
-        return zlib.decompressobj(-15)
-    elif compress_type == ZIP_BZIP2:
-        return bz2.BZ2Decompressor()
-    elif compress_type == ZIP_LZMA:
-        return LZMADecompressor()
-    else:
-        descr = compressor_names.get(compress_type)
-        if descr:
-            raise NotImplementedError("compression type %d (%s)" % (compress_type, descr))
-        else:
-            raise NotImplementedError("compression type %d" % (compress_type,))
-
-
 class _SharedFile:
     def __init__(self, file, pos, close, lock, writing):
         self._file = file
@@ -853,7 +836,7 @@ class ZipExtFile(io.BufferedIOBase):
         self._compress_left = zipinfo.compress_size
         self._left = zipinfo.file_size
 
-        self._decompressor = _get_decompressor(self._compress_type)
+        self._decompressor = self.get_decompressor(self._compress_type)
 
         self._eof = False
         self._readbuffer = b''
@@ -914,6 +897,22 @@ class ZipExtFile(io.BufferedIOBase):
             raise BadZipFile(
                 'File name in directory %r and header %r differ.'
                 % (self._zinfo.orig_filename, fname))
+
+    def get_decompressor(self, compress_type):
+        if compress_type == ZIP_STORED:
+            return None
+        elif compress_type == ZIP_DEFLATED:
+            return zlib.decompressobj(-15)
+        elif compress_type == ZIP_BZIP2:
+            return bz2.BZ2Decompressor()
+        elif compress_type == ZIP_LZMA:
+            return LZMADecompressor()
+        else:
+            descr = compressor_names.get(compress_type)
+            if descr:
+                raise NotImplementedError("compression type %d (%s)" % (compress_type, descr))
+            else:
+                raise NotImplementedError("compression type %d" % (compress_type,))
 
     def get_decrypter_cls(self):
         return CRCZipDecrypter
@@ -1157,7 +1156,7 @@ class ZipExtFile(io.BufferedIOBase):
             self._left = self._orig_file_size
             self._readbuffer = b''
             self._offset = 0
-            self._decompressor = _get_decompressor(self._compress_type)
+            self._decompressor = self.get_decompressor(self._compress_type)
             self._eof = False
             read_offset = new_pos
 
