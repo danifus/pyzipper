@@ -1234,6 +1234,8 @@ class ZipFile:
 
     fp = None                   # Set here since __del__ checks it
     _windows_illegal_name_trans_table = None
+    zipinfo_cls = ZipInfo
+    zipextfile_cls = ZipExtFile
 
     def __init__(self, file, mode="r", compression=ZIP_STORED, allowZip64=True,
                  compresslevel=None, *, strict_timestamps=True):
@@ -1393,7 +1395,7 @@ class ZipFile:
                 # Historical ZIP filename encoding
                 filename = filename.decode('cp437')
             # Create ZipInfo instance to store file information
-            x = ZipInfo(filename)
+            x = self.zipinfo_cls(filename)
             x.extra = fp.read(centdir[_CD_EXTRA_FIELD_LENGTH])
             x.comment = fp.read(centdir[_CD_COMMENT_LENGTH])
             x.header_offset = centdir[_CD_LOCAL_HEADER_OFFSET]
@@ -1522,11 +1524,11 @@ class ZipFile:
                 "Attempt to use ZIP archive that was already closed")
 
         # Make sure we have an info object
-        if isinstance(name, ZipInfo):
+        if isinstance(name, self.zipinfo_cls):
             # 'name' is already an info object
             zinfo = name
         elif mode == 'w':
-            zinfo = ZipInfo(name)
+            zinfo = self.zipinfo_cls(name)
             zinfo.compress_type = self.compression
             zinfo._compresslevel = self.compresslevel
         else:
@@ -1543,9 +1545,6 @@ class ZipFile:
 
         return self._open_to_read(mode, zinfo, pwd)
 
-    def get_zipextfile_cls(self):
-        return ZipExtFile
-
     def _open_to_read(self, mode, zinfo, pwd):
         # Open for reading:
         self._fileRefCnt += 1
@@ -1554,8 +1553,7 @@ class ZipFile:
         try:
             if not pwd:
                 pwd = self.pwd
-            zipextfile_cls = self.get_zipextfile_cls()
-            return zipextfile_cls(zef_file, mode, zinfo, True, pwd)
+            return self.zipextfile_cls(zef_file, mode, zinfo, True, pwd)
         except:
             zef_file.close()
             raise
@@ -1652,7 +1650,7 @@ class ZipFile:
         """Extract the ZipInfo object 'member' to a physical
            file on the path targetpath.
         """
-        if not isinstance(member, ZipInfo):
+        if not isinstance(member, self.zipinfo_cls):
             member = self.getinfo(member)
 
         # build the destination pathname, replacing
@@ -1725,8 +1723,8 @@ class ZipFile:
                 "Can't write to ZIP archive while an open writing handle exists"
             )
 
-        zinfo = ZipInfo.from_file(filename, arcname,
-                                  strict_timestamps=self._strict_timestamps)
+        zinfo = self.zipinfo_cls.from_file(
+            filename, arcname, strict_timestamps=self._strict_timestamps)
 
         if zinfo.is_dir():
             zinfo.compress_size = 0
@@ -1771,9 +1769,10 @@ class ZipFile:
         the name of the file in the archive."""
         if isinstance(data, str):
             data = data.encode("utf-8")
-        if not isinstance(zinfo_or_arcname, ZipInfo):
-            zinfo = ZipInfo(filename=zinfo_or_arcname,
-                            date_time=time.localtime(time.time())[:6])
+        if not isinstance(zinfo_or_arcname, self.zipinfo_cls):
+            zinfo = self.zipinfo_cls(
+                filename=zinfo_or_arcname,
+                date_time=time.localtime(time.time())[:6])
             zinfo.compress_type = self.compression
             zinfo._compresslevel = self.compresslevel
             if zinfo.filename[-1] == '/':
