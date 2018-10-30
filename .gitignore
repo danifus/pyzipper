@@ -1,0 +1,7 @@
+build/
+dist/
+pyzipper.egg-info
+*.pyc
+*.swp
+*.egg
+.tox/
