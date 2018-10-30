@@ -66,6 +66,10 @@ LZMA_VERSION = 63
 # we recognize (but not necessarily support) all features up to that version
 MAX_EXTRACT_VERSION = 63
 
+# Extensible data field codes:
+# Zip64 extended information extra field
+EXTRA_ZIP64 = 0x0001
+
 # Below are some formats and associated data for reading/writing headers using
 # the struct module.  The names and structures of headers/records are those used
 # in the PKWARE description of the ZIP file format:
@@ -453,42 +457,52 @@ class ZipInfo (object):
         except UnicodeEncodeError:
             return self.filename.encode('utf-8'), self.flag_bits | 0x800
 
+    def decode_extra_zip64(self, ln, extra):
+        if ln >= 24:
+            counts = struct.unpack('<QQQ', extra[4:28])
+        elif ln == 16:
+            counts = struct.unpack('<QQ', extra[4:20])
+        elif ln == 8:
+            counts = struct.unpack('<Q', extra[4:12])
+        elif ln == 0:
+            counts = ()
+        else:
+            raise BadZipFile(
+                "Corrupt extra field %04x (size=%d)" % (EXTRA_ZIP64, ln))
+
+        idx = 0
+
+        # ZIP64 extension (large files and/or large archives)
+        if self.file_size in (0xffffffffffffffff, 0xffffffff):
+            self.file_size = counts[idx]
+            idx += 1
+
+        if self.compress_size == 0xFFFFFFFF:
+            self.compress_size = counts[idx]
+            idx += 1
+
+        if self.header_offset == 0xffffffff:
+            old = self.header_offset
+            self.header_offset = counts[idx]
+
+    def get_extra_decoders(self):
+        return {
+            EXTRA_ZIP64: self.decode_extra_zip64,
+        }
+
     def _decodeExtra(self):
         # Try to decode the extra field.
         extra = self.extra
-        unpack = struct.unpack
+        extra_decoders = self.get_extra_decoders()
         while len(extra) >= 4:
-            tp, ln = unpack('<HH', extra[:4])
+            tp, ln = struct.unpack('<HH', extra[:4])
             if ln+4 > len(extra):
                 raise BadZipFile("Corrupt extra field %04x (size=%d)" % (tp, ln))
-            if tp == 0x0001:
-                if ln >= 24:
-                    counts = unpack('<QQQ', extra[4:28])
-                elif ln == 16:
-                    counts = unpack('<QQ', extra[4:20])
-                elif ln == 8:
-                    counts = unpack('<Q', extra[4:12])
-                elif ln == 0:
-                    counts = ()
-                else:
-                    raise BadZipFile("Corrupt extra field %04x (size=%d)" % (tp, ln))
-
-                idx = 0
-
-                # ZIP64 extension (large files and/or large archives)
-                if self.file_size in (0xffffffffffffffff, 0xffffffff):
-                    self.file_size = counts[idx]
-                    idx += 1
-
-                if self.compress_size == 0xFFFFFFFF:
-                    self.compress_size = counts[idx]
-                    idx += 1
-
-                if self.header_offset == 0xffffffff:
-                    old = self.header_offset
-                    self.header_offset = counts[idx]
-                    idx+=1
-
+            try:
+                extra_decoders[tp](ln, extra)
+            except KeyError:
+                # We don't support this particular Extra Data field
+                pass
             extra = extra[ln+4:]
 
     @classmethod
