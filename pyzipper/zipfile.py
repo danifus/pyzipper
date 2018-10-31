@@ -405,12 +405,41 @@ class ZipInfo (object):
         result.append('>')
         return ''.join(result)
 
+    @property
+    def use_datadescripter(self):
+        """Returns True if datadescripter is in use.
+
+        If bit 3 of flags is set, the data descripter is must exist.  It is
+        byte aligned and immediately follows the last byte of compressed data.
+
+        crc-32                          4 bytes
+        compressed size                 4 bytes
+        uncompressed size               4 bytes
+        """
+        return self.flag_bits & 0x08
+
+    def get_dosdate(self):
+        dt = self.date_time
+        return (dt[0] - 1980) << 9 | dt[1] << 5 | dt[2]
+
+    def get_dostime(self):
+        dt = self.date_time
+        return dt[3] << 11 | dt[4] << 5 | (dt[5] // 2)
+
+    def encode_header(self, filename, extract_version, reserved, flag_bits,
+                      compress_type, dostime, dosdate, CRC, compress_size,
+                      file_size, extra):
+        header = struct.pack(structFileHeader, stringFileHeader,
+                             self.extract_version, self.reserved, flag_bits,
+                             self.compress_type, dostime, dosdate, CRC,
+                             compress_size, file_size, len(filename), len(extra))
+        return header + filename + extra
+
     def FileHeader(self, zip64=None):
         """Return the per-file header as a string."""
-        dt = self.date_time
-        dosdate = (dt[0] - 1980) << 9 | dt[1] << 5 | dt[2]
-        dostime = dt[3] << 11 | dt[4] << 5 | (dt[5] // 2)
-        if self.flag_bits & 0x08:
+        dosdate = self.get_dosdate()
+        dostime = self.get_dostime()
+        if self.use_datadescripter:
             # Set these to zero because we write them after the file data
             CRC = compress_size = file_size = 0
         else:
@@ -444,12 +473,9 @@ class ZipInfo (object):
         self.extract_version = max(min_version, self.extract_version)
         self.create_version = max(min_version, self.create_version)
         filename, flag_bits = self._encodeFilenameFlags()
-        header = struct.pack(structFileHeader, stringFileHeader,
-                             self.extract_version, self.reserved, flag_bits,
-                             self.compress_type, dostime, dosdate, CRC,
-                             compress_size, file_size,
-                             len(filename), len(extra))
-        return header + filename + extra
+        return self.encode_header(filename, self.extract_version, self.reserved,
+                                  flag_bits, self.compress_type, dostime,
+                                  dosdate, CRC, compress_size, file_size, extra)
 
     def _encodeFilenameFlags(self):
         try:
