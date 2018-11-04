@@ -462,6 +462,37 @@ class ZipInfo (object):
             compress_size = 0xffffffff
             min_version = ZIP64_VERSION
         return extra, file_size, compress_size, min_version
+
+    def zip64_central_header(self):
+        extra = []
+        if self.file_size > ZIP64_LIMIT \
+           or self.compress_size > ZIP64_LIMIT:
+            extra.append(self.file_size)
+            extra.append(self.compress_size)
+            file_size = 0xffffffff
+            compress_size = 0xffffffff
+        else:
+            file_size = self.file_size
+            compress_size = self.compress_size
+
+        if self.header_offset > ZIP64_LIMIT:
+            extra.append(self.header_offset)
+            header_offset = 0xffffffff
+        else:
+            header_offset = self.header_offset
+
+        extra_data = self.extra
+        min_version = 0
+        if extra:
+            # Append a ZIP64 field to the extra's
+            extra_data = _strip_extra(extra_data, (1,))
+            extra_data = struct.pack(
+                '<HH' + 'Q'*len(extra),
+                1, 8*len(extra), *extra) + extra_data
+
+            min_version = ZIP64_VERSION
+        return extra_data, file_size, compress_size, header_offset, min_version
+
     def FileHeader(self, zip64=None):
         """Return the per-file header as a string."""
         dosdate = self.get_dosdate()
@@ -543,33 +574,12 @@ class ZipInfo (object):
         dosdate = self.get_dosdate()
         dostime = self.get_dostime()
 
-        extra = []
-        if self.file_size > ZIP64_LIMIT \
-           or self.compress_size > ZIP64_LIMIT:
-            extra.append(self.file_size)
-            extra.append(self.compress_size)
-            file_size = 0xffffffff
-            compress_size = 0xffffffff
-        else:
-            file_size = self.file_size
-            compress_size = self.compress_size
-
-        if self.header_offset > ZIP64_LIMIT:
-            extra.append(self.header_offset)
-            header_offset = 0xffffffff
-        else:
-            header_offset = self.header_offset
-
-        extra_data = self.extra
-        min_version = 0
-        if extra:
-            # Append a ZIP64 field to the extra's
-            extra_data = _strip_extra(extra_data, (1,))
-            extra_data = struct.pack(
-                '<HH' + 'Q'*len(extra),
-                1, 8*len(extra), *extra) + extra_data
-
-            min_version = ZIP64_VERSION
+        (extra_data,
+         file_size,
+         compress_size,
+         header_offset,
+         min_version,
+         ) = self.zip64_central_header()
 
         if self.compress_type == ZIP_BZIP2:
             min_version = max(BZIP2_VERSION, min_version)
