@@ -435,6 +435,33 @@ class ZipInfo (object):
                              compress_size, file_size, len(filename), len(extra))
         return header + filename + extra
 
+    def zip64_local_header(self, zip64, file_size, compress_size):
+        """If zip64 is required, return encoded extra block and other
+        parameters which may alter the local directory entry for this file.
+
+        The local directory zip64 entry requires that, if the zip64 block is
+        present, it must contain both file_size and compress_size. This is
+        different to the central directory zip64 extra block which requires
+        only fields which need the extra zip64 size be present in the extra
+        block.
+        """
+        min_version = 0
+        extra = b''
+        requires_zip64 = file_size > ZIP64_LIMIT or compress_size > ZIP64_LIMIT
+        if zip64 is None:
+            zip64 = requires_zip64
+        if zip64:
+            extra = struct.pack(
+                '<HHQQ', EXTRA_ZIP64, 8*2, file_size, compress_size)
+        if requires_zip64:
+            if not zip64:
+                raise LargeZipFile("Filesize would require ZIP64 extensions")
+            # File is larger than what fits into a 4 byte integer,
+            # fall back to the ZIP64 extension
+            file_size = 0xffffffff
+            compress_size = 0xffffffff
+            min_version = ZIP64_VERSION
+        return extra, file_size, compress_size, min_version
     def FileHeader(self, zip64=None):
         """Return the per-file header as a string."""
         dosdate = self.get_dosdate()
@@ -448,22 +475,14 @@ class ZipInfo (object):
             file_size = self.file_size
 
         extra = self.extra
-
         min_version = 0
-        if zip64 is None:
-            zip64 = file_size > ZIP64_LIMIT or compress_size > ZIP64_LIMIT
-        if zip64:
-            fmt = '<HHQQ'
-            extra = extra + struct.pack(fmt,
-                                        1, struct.calcsize(fmt)-4, file_size, compress_size)
-        if file_size > ZIP64_LIMIT or compress_size > ZIP64_LIMIT:
-            if not zip64:
-                raise LargeZipFile("Filesize would require ZIP64 extensions")
-            # File is larger than what fits into a 4 byte integer,
-            # fall back to the ZIP64 extension
-            file_size = 0xffffffff
-            compress_size = 0xffffffff
-            min_version = ZIP64_VERSION
+        (zip64_extra,
+         file_size,
+         compress_size,
+         zip64_min_version,
+         ) = self.zip64_local_header(zip64, file_size, compress_size)
+        min_version = min(min_version, zip64_min_version)
+        extra += zip64_extra
 
         if self.compress_type == ZIP_BZIP2:
             min_version = max(BZIP2_VERSION, min_version)
