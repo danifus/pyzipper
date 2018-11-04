@@ -465,14 +465,16 @@ class ZipInfo (object):
 
     def zip64_central_header(self):
         extra = []
-        if self.file_size > ZIP64_LIMIT \
-           or self.compress_size > ZIP64_LIMIT:
+        if self.file_size > ZIP64_LIMIT:
             extra.append(self.file_size)
-            extra.append(self.compress_size)
             file_size = 0xffffffff
-            compress_size = 0xffffffff
         else:
             file_size = self.file_size
+
+        if self.compress_size > ZIP64_LIMIT:
+            extra.append(self.compress_size)
+            compress_size = 0xffffffff
+        else:
             compress_size = self.compress_size
 
         if self.header_offset > ZIP64_LIMIT:
