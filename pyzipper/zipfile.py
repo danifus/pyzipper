@@ -452,7 +452,11 @@ class ZipInfo (object):
             zip64 = requires_zip64
         if zip64:
             extra = struct.pack(
-                '<HHQQ', EXTRA_ZIP64, 8*2, file_size, compress_size)
+                '<HHQQ',
+                EXTRA_ZIP64,
+                8*2,  # QQ
+                file_size,
+                compress_size)
         if requires_zip64:
             if not zip64:
                 raise LargeZipFile("Filesize would require ZIP64 extensions")
@@ -464,21 +468,21 @@ class ZipInfo (object):
         return extra, file_size, compress_size, min_version
 
     def zip64_central_header(self):
-        extra = []
+        zip64_fields = []
         if self.file_size > ZIP64_LIMIT:
-            extra.append(self.file_size)
+            zip64_fields.append(self.file_size)
             file_size = 0xffffffff
         else:
             file_size = self.file_size
 
         if self.compress_size > ZIP64_LIMIT:
-            extra.append(self.compress_size)
+            zip64_fields.append(self.compress_size)
             compress_size = 0xffffffff
         else:
             compress_size = self.compress_size
 
         if self.header_offset > ZIP64_LIMIT:
-            extra.append(self.header_offset)
+            zip64_fields.append(self.header_offset)
             header_offset = 0xffffffff
         else:
             header_offset = self.header_offset
@@ -488,21 +492,22 @@ class ZipInfo (object):
         # more than 65,535.
         # ZIP64_DISK_LIMIT = (1 << 16) - 1
         # if self.disk_start > ZIP64_DISK_LIMIT:
-        #     extra.append(self.disk_start)
+        #     zip64_fields.append(self.disk_start)
         #     disk_num = 0xffff
         # else:
         #     header_offset = self.disk_start
 
         min_version = 0
-        if extra:
-            extra_data = struct.pack(
-                '<HH' + 'Q'*len(extra),
-                1, 8*len(extra), *extra)
-
+        if zip64_fields:
+            extra = struct.pack(
+                '<HH' + 'Q'*len(zip64_fields),
+                EXTRA_ZIP64,
+                8*len(zip64_fields),
+                *zip64_fields)
             min_version = ZIP64_VERSION
         else:
-            extra_data = b''
-        return extra_data, file_size, compress_size, header_offset, min_version
+            extra = b''
+        return extra, file_size, compress_size, header_offset, min_version
 
     def FileHeader(self, zip64=None):
         """Return the per-file header as a string."""
