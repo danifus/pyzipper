@@ -418,6 +418,14 @@ class ZipInfo (object):
         """
         return self.flag_bits & 0x08
 
+    def encode_datadescripter(self, zip64, crc, compress_size, file_size):
+        fmt = '<LLQQ' if zip64 else '<LLLL'
+        return struct.pack(fmt, _DD_SIGNATURE, crc, compress_size, file_size)
+
+    def datadescripter(self, zip64):
+        return self.encode_datadescripter(
+            zip64, self.CRC, self.compress_size, self.file_size)
+
     def get_dosdate(self):
         dt = self.date_time
         return (dt[0] - 1980) << 9 | dt[1] << 5 | dt[2]
@@ -1436,11 +1444,9 @@ class _ZipWriteFile(io.BufferedIOBase):
         self._zinfo.file_size = self._file_size
 
         # Write updated header info
-        if self._zinfo.flag_bits & 0x08:
+        if self._zinfo.use_datadescripter:
             # Write CRC and file sizes after the file data
-            fmt = '<LLQQ' if self._zip64 else '<LLLL'
-            self._fileobj.write(struct.pack(fmt, _DD_SIGNATURE, self._zinfo.CRC,
-                self._zinfo.compress_size, self._zinfo.file_size))
+            self._fileobj.write(self._zinfo.datadescripter(self._zip64))
             self._zipfile.start_dir = self._fileobj.tell()
         else:
             if not self._zip64:
