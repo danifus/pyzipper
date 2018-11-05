@@ -483,11 +483,23 @@ class ZipInfo (object):
         else:
             header_offset = self.header_offset
 
+        # For completeness - We don't support writing disks with multiple parts
+        # so the number of disks is always going to be 0. Definitely not
+        # more than 65,535.
+        # ZIP64_DISK_LIMIT = (1 << 16) - 1
+        # if self.disk_start > ZIP64_DISK_LIMIT:
+        #     extra.append(self.disk_start)
+        #     disk_num = 0xffff
+        # else:
+        #     header_offset = self.disk_start
+
         extra_data = self.extra
         min_version = 0
         if extra:
             # Append a ZIP64 field to the extra's
             extra_data = _strip_extra(extra_data, (1,))
+            # Always write ZIP64 back to the start of the extra block for
+            # compatability with windows 7.
             extra_data = struct.pack(
                 '<HH' + 'Q'*len(extra),
                 1, 8*len(extra), *extra) + extra_data
