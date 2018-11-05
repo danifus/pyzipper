@@ -801,6 +801,9 @@ class BaseZipDecrypter:
             'BaseZipDecrypter implementations must implement `decrypt`.'
         )
 
+    def check_integrity(self):
+        pass
+
 
 class CRCZipDecrypter(BaseZipDecrypter):
     """PKWARE Encryption Decryptor

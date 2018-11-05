@@ -2,18 +2,18 @@ import sys
 import unittest
 
 
-do_zipfile64 = False
+names = []
 if len(sys.argv) > 1:
-    if sys.argv[1] == 'extralargefile':
-        do_zipfile64 = True
-
-
-names = [
-    'test.test_zipfile',
-]
-
-if do_zipfile64:
-    names.append('test.test_zipfile64')
+    test_type = sys.argv[1]
+    if test_type == 'extralargefile':
+        names.append('test.test_zipfile64')
+    elif test_type == 'aes':
+        names.extend([
+            'test.test_zipfile_aes',
+            'test.test_zipfile2'
+        ])
+else:
+    names.append('test.test_zipfile')
 
 suite = unittest.TestLoader().loadTestsFromNames(names)
 unittest.TextTestRunner(verbosity=2).run(suite)
