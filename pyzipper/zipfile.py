@@ -426,13 +426,24 @@ class ZipInfo (object):
         dt = self.date_time
         return dt[3] << 11 | dt[4] << 5 | (dt[5] // 2)
 
-    def encode_header(self, filename, extract_version, reserved, flag_bits,
-                      compress_type, dostime, dosdate, CRC, compress_size,
-                      file_size, extra):
-        header = struct.pack(structFileHeader, stringFileHeader,
-                             self.extract_version, self.reserved, flag_bits,
-                             self.compress_type, dostime, dosdate, CRC,
-                             compress_size, file_size, len(filename), len(extra))
+    def encode_local_directory(self, *, filename, extract_version, reserved,
+                               flag_bits, compress_type, dostime, dosdate, crc,
+                               compress_size, file_size, extra):
+        header = struct.pack(
+            structFileHeader,
+            stringFileHeader,
+            extract_version,
+            reserved,
+            flag_bits,
+            compress_type,
+            dostime,
+            dosdate,
+            crc,
+            compress_size,
+            file_size,
+            len(filename),
+            len(extra)
+        )
         return header + filename + extra
 
     def zip64_local_header(self, zip64, file_size, compress_size):
@@ -539,9 +550,19 @@ class ZipInfo (object):
         self.extract_version = max(min_version, self.extract_version)
         self.create_version = max(min_version, self.create_version)
         filename, flag_bits = self._encodeFilenameFlags()
-        return self.encode_header(filename, self.extract_version, self.reserved,
-                                  flag_bits, self.compress_type, dostime,
-                                  dosdate, CRC, compress_size, file_size, extra)
+        return self.encode_local_directory(
+            filename=filename,
+            extract_version=self.extract_version,
+            reserved=self.reserved,
+            flag_bits=flag_bits,
+            compress_type=self.compress_type,
+            dostime=dostime,
+            dosdate=dosdate,
+            crc=CRC,
+            compress_size=compress_size,
+            file_size=file_size,
+            extra=extra
+        )
 
     def encode_central_directory(self, filename, create_version, create_system,
                                  extract_version, reserved, flag_bits,
