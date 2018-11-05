@@ -635,33 +635,50 @@ class ZipInfo (object):
         except UnicodeEncodeError:
             return self.filename.encode('utf-8'), self.flag_bits | 0x800
 
-    def decode_extra_zip64(self, ln, extra):
-        if ln >= 24:
-            counts = struct.unpack('<QQQ', extra[4:28])
-        elif ln == 16:
-            counts = struct.unpack('<QQ', extra[4:20])
-        elif ln == 8:
-            counts = struct.unpack('<Q', extra[4:12])
-        elif ln == 0:
+    def decode_extra_zip64(self, ln, extra, is_central_directory=True):
+
+        # offset = len(extra block tag) + len(extra block size)
+        offset = 4
+
+        # Unpack the extra block from one of the possiblities given the
+        # combinations of a struct 'QQQL' where every field is optional.
+        if ln == 0:
             counts = ()
+        elif ln in {8, 16, 24}:
+            field_cnt = ln / 8
+            counts = struct.unpack('<%dQ' % field_cnt, extra[offset:offset+ln])
+        elif ln in {4, 12, 20, 28}:
+            q_field_cnt = (ln - 4) / 8
+            if q_field_cnt == 0:
+                struct_str = '<%dQH' % (q_field_cnt, )
+            else:
+                struct_str = '<QH'
+            counts = struct.unpack(struct_str, extra[offset:offset+ln])
         else:
             raise BadZipFile(
                 "Corrupt extra field %04x (size=%d)" % (EXTRA_ZIP64, ln))
 
-        idx = 0
-
+        zip64_field_cnt = 0
         # ZIP64 extension (large files and/or large archives)
         if self.file_size in (0xffffffffffffffff, 0xffffffff):
-            self.file_size = counts[idx]
-            idx += 1
+            self.file_size = counts[zip64_field_cnt]
+            zip64_field_cnt += 1
 
-        if self.compress_size == 0xFFFFFFFF:
-            self.compress_size = counts[idx]
-            idx += 1
+        if self.compress_size == 0xffffffff:
+            self.compress_size = counts[zip64_field_cnt]
+            zip64_field_cnt += 1
 
-        if self.header_offset == 0xffffffff:
-            old = self.header_offset
-            self.header_offset = counts[idx]
+        if is_central_directory:
+            if self.header_offset == 0xffffffff:
+                self.header_offset = counts[zip64_field_cnt]
+                zip64_field_cnt += 1
+
+            # For completeness - The spec defines a way for handling a larger
+            # number of disks than can fit into 4 bytes. As zipfile currently
+            # doesn't support multiple disks we don't do anything with this field.
+            # if self.diskno == 0xffff:
+            #     self.diskno = counts[zip64_field_cnt]
+            #     zip64_field_cnt += 1
 
     def get_extra_decoders(self):
         return {
