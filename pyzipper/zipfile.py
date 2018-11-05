@@ -1053,7 +1053,8 @@ class ZipExtFile(io.BufferedIOBase):
     def __init__(self, fileobj, mode, zipinfo, close_fileobj=False, pwd=None):
         self._fileobj = fileobj
         self._zinfo = zipinfo
-        self.raise_for_header_checks()
+        self.process_local_directory()
+        self.raise_for_unsupported_flags()
         self._close_fileobj = close_fileobj
 
         self._compress_type = zipinfo.compress_type
@@ -1090,7 +1091,15 @@ class ZipExtFile(io.BufferedIOBase):
         except AttributeError:
             pass
 
-    def raise_for_header_checks(self):
+    def process_local_directory(self):
+        """Read the local header and raise for any errors.
+
+        The local header is largely a duplicate of the file's entry in the
+        central directory. Where it differs, the local header generally
+        contains less information than the entry in the central directory.
+
+        Currently we only use the local header data to check for errors.
+        """
         # Skip the file header:
         fheader = self._fileobj.read(sizeFileHeader)
         if len(fheader) != sizeFileHeader:
@@ -1103,14 +1112,6 @@ class ZipExtFile(io.BufferedIOBase):
         if fheader[_FH_EXTRA_FIELD_LENGTH]:
             self._fileobj.read(fheader[_FH_EXTRA_FIELD_LENGTH])
 
-        if self._zinfo.flag_bits & 0x20:
-            # Zip 2.7: compressed patched data
-            raise NotImplementedError("compressed patched data (flag bit 5)")
-
-        if self._zinfo.flag_bits & 0x40:
-            # strong encryption
-            raise NotImplementedError("strong encryption (flag bit 6)")
-
         if self._zinfo.flag_bits & 0x800:
             # UTF-8 filename
             fname_str = fname.decode("utf-8")
@@ -1121,6 +1122,15 @@ class ZipExtFile(io.BufferedIOBase):
             raise BadZipFile(
                 'File name in directory %r and header %r differ.'
                 % (self._zinfo.orig_filename, fname))
+
+    def raise_for_unsupported_flags(self):
+        if self._zinfo.flag_bits & 0x20:
+            # Zip 2.7: compressed patched data
+            raise NotImplementedError("compressed patched data (flag bit 5)")
+
+        if self._zinfo.flag_bits & 0x40:
+            # strong encryption
+            raise NotImplementedError("strong encryption (flag bit 6)")
 
     def get_decompressor(self, compress_type):
         if compress_type == ZIP_STORED:
