@@ -16,4 +16,6 @@ else:
     names.append('test.test_zipfile')
 
 suite = unittest.TestLoader().loadTestsFromNames(names)
-unittest.TextTestRunner(verbosity=2).run(suite)
+runner = unittest.TextTestRunner(verbosity=2).run(suite)
+ret = not runner.wasSuccessful()
+sys.exit(ret)
