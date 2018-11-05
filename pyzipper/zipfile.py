@@ -1409,12 +1409,13 @@ class ZipExtFile(io.BufferedIOBase):
 
 
 class _ZipWriteFile(io.BufferedIOBase):
-    def __init__(self, zf, zinfo, zip64):
+    def __init__(self, zf, zinfo, zip64, encrypter=None):
         self._zinfo = zinfo
         self._zip64 = zip64
         self._zipfile = zf
         self._compressor = _get_compressor(zinfo.compress_type,
                                            zinfo._compresslevel)
+        self._encrypter = encrypter
         self._file_size = 0
         self._compress_size = 0
         self._crc = 0
@@ -1434,7 +1435,9 @@ class _ZipWriteFile(io.BufferedIOBase):
         self._crc = crc32(data, self._crc)
         if self._compressor:
             data = self._compressor.compress(data)
-            self._compress_size += len(data)
+        if self._encrypter:
+            data = self._encrypter.encrypt(data)
+        self._compress_size += len(data)
         self._fileobj.write(data)
         return nbytes
 
@@ -1445,11 +1448,14 @@ class _ZipWriteFile(io.BufferedIOBase):
         # Flush any data from the compressor, and update header info
         if self._compressor:
             buf = self._compressor.flush()
-            self._compress_size += len(buf)
-            self._fileobj.write(buf)
-            self._zinfo.compress_size = self._compress_size
         else:
-            self._zinfo.compress_size = self._file_size
+            buf = b''
+        if self._encrypter:
+            buf = self._encrypter.encrypt(buf)
+            buf += self._encrypter.flush()
+        self._compress_size += len(buf)
+        self._fileobj.write(buf)
+        self._zinfo.compress_size = self._compress_size
         self._zinfo.CRC = self._crc
         self._zinfo.file_size = self._file_size
 
@@ -1508,6 +1514,7 @@ class ZipFile:
     _windows_illegal_name_trans_table = None
     zipinfo_cls = ZipInfo
     zipextfile_cls = ZipExtFile
+    zipwritefile_cls = _ZipWriteFile
 
     def __init__(self, file, mode="r", compression=ZIP_STORED, allowZip64=True,
                  compresslevel=None, *, strict_timestamps=True):
@@ -1527,6 +1534,8 @@ class ZipFile:
         self.compresslevel = compresslevel
         self.mode = mode
         self.pwd = None
+        self.encryption_method = None
+        self.encryption_kwargs = None
         self._comment = b''
         self._strict_timestamps = strict_timestamps
 
@@ -1746,6 +1755,13 @@ class ZipFile:
         else:
             self.pwd = None
 
+    def setencryption(self, encryption_method, **kwargs):
+        self.encryption_method = encryption_method
+        self.encryption_kwargs = kwargs
+
+    def get_encrypter(self):
+        raise NotImplementedError("That encryption method is not supported")
+
     @property
     def comment(self):
         """The comment text associated with the ZIP file."""
@@ -1778,7 +1794,7 @@ class ZipFile:
         mode should be 'r' to read a file already in the ZIP file, or 'w' to
         write to a file newly added to the archive.
 
-        pwd is the password to decrypt files (only used for reading).
+        pwd is the password to encrypt and decrypt files.
 
         When writing, if the file size is not known in advance but may exceed
         2 GiB, pass force_zip64 to use the ZIP64 format, which can handle large
@@ -1789,11 +1805,12 @@ class ZipFile:
             raise ValueError('open() requires mode "r" or "w"')
         if pwd and not isinstance(pwd, bytes):
             raise TypeError("pwd: expected bytes, got %s" % type(pwd).__name__)
-        if pwd and (mode == "w"):
-            raise ValueError("pwd is only supported for reading files")
         if not self.fp:
             raise ValueError(
                 "Attempt to use ZIP archive that was already closed")
+
+        if not pwd:
+            pwd = self.pwd
 
         # Make sure we have an info object
         if isinstance(name, self.zipinfo_cls):
@@ -1808,7 +1825,7 @@ class ZipFile:
             zinfo = self.getinfo(name)
 
         if mode == 'w':
-            return self._open_to_write(zinfo, force_zip64=force_zip64)
+            return self._open_to_write(zinfo, force_zip64=force_zip64, pwd=pwd)
 
         if self._writing:
             raise ValueError("Can't read from the ZIP file while there "
@@ -1823,14 +1840,12 @@ class ZipFile:
         zef_file = _SharedFile(self.fp, zinfo.header_offset,
                                self._fpclose, self._lock, lambda: self._writing)
         try:
-            if not pwd:
-                pwd = self.pwd
             return self.zipextfile_cls(zef_file, mode, zinfo, True, pwd)
         except:
             zef_file.close()
             raise
 
-    def _open_to_write(self, zinfo, force_zip64=False):
+    def _open_to_write(self, zinfo, force_zip64=False, pwd=None):
         if force_zip64 and not self._allowZip64:
             raise ValueError(
                 "force_zip64 is True, but allowZip64 was False when opening "
@@ -1848,6 +1863,11 @@ class ZipFile:
         zinfo.CRC = 0
 
         zinfo.flag_bits = 0x00
+        encrypter = None
+        if pwd is not None or self.encryption_method is not None:
+            zinfo.flag_bits |= 0x01
+            encrypter = self.get_encrypter()
+            encrypter.update_zipinfo(zinfo)
         if zinfo.compress_type == ZIP_LZMA:
             # Compressed data includes an end-of-stream (EOS) marker
             zinfo.flag_bits |= 0x02
@@ -1871,7 +1891,7 @@ class ZipFile:
         self.fp.write(zinfo.FileHeader(zip64))
 
         self._writing = True
-        return _ZipWriteFile(self, zinfo, zip64)
+        return self.zipwritefile_cls(self, zinfo, zip64, encrypter)
 
     def extract(self, member, path=None, pwd=None):
         """Extract a member from the archive to the current working directory,
