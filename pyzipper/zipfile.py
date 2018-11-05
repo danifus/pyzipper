@@ -493,18 +493,15 @@ class ZipInfo (object):
         # else:
         #     header_offset = self.disk_start
 
-        extra_data = self.extra
         min_version = 0
         if extra:
-            # Append a ZIP64 field to the extra's
-            extra_data = _strip_extra(extra_data, (1,))
-            # Always write ZIP64 back to the start of the extra block for
-            # compatability with windows 7.
             extra_data = struct.pack(
                 '<HH' + 'Q'*len(extra),
-                1, 8*len(extra), *extra) + extra_data
+                1, 8*len(extra), *extra)
 
             min_version = ZIP64_VERSION
+        else:
+            extra_data = b''
         return extra_data, file_size, compress_size, header_offset, min_version
 
     def FileHeader(self, zip64=None):
@@ -519,15 +516,15 @@ class ZipInfo (object):
             compress_size = self.compress_size
             file_size = self.file_size
 
-        extra = self.extra
+        # Always write ZIP64 back to the start of the extra block for
+        # compatability with windows 7.
         min_version = 0
-        (zip64_extra,
+        (extra,
          file_size,
          compress_size,
          zip64_min_version,
          ) = self.zip64_local_header(zip64, file_size, compress_size)
         min_version = min(min_version, zip64_min_version)
-        extra += zip64_extra
 
         if self.compress_type == ZIP_BZIP2:
             min_version = max(BZIP2_VERSION, min_version)
@@ -588,6 +585,8 @@ class ZipInfo (object):
         dosdate = self.get_dosdate()
         dostime = self.get_dostime()
 
+        # Always write ZIP64 back to the start of the extra block for
+        # compatability with windows 7.
         (extra_data,
          file_size,
          compress_size,
