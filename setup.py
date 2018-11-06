@@ -13,11 +13,11 @@ from setuptools import find_packages, setup, Command
 
 # Package meta-data.
 NAME = 'pyzipper'
-DESCRIPTION = 'Additional features for zipfile.'
+DESCRIPTION = 'AES encryption for zipfile.'
 URL = 'https://github.com/danifus/pyzipper'
 EMAIL = 'daniel.hillier@gmail.com'
 AUTHOR = 'Daniel Hillier'
-REQUIRES_PYTHON = '>=3.0'
+REQUIRES_PYTHON = '>=3.3'
 VERSION = None
 
 # What packages are required for this module to be executed?

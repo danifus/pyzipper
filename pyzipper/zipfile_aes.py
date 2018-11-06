@@ -12,13 +12,13 @@ from .zipfile import (
     crc32,
 )
 
-WINZIP_AES = 'WINZIP_AES'
-WINZIP_AES_COMPRESS_TYPE = 99
-WINZIP_AES_V1 = 0x0001
-WINZIP_AES_V2 = 0x0002
-WINZIP_AES_VENDOR_ID = b'AE'
+WZ_AES = 'WZ_AES'
+WZ_AES_COMPRESS_TYPE = 99
+WZ_AES_V1 = 0x0001
+WZ_AES_V2 = 0x0002
+WZ_AES_VENDOR_ID = b'AE'
 
-EXTRA_WINZIP_AES = 0x9901
+EXTRA_WZ_AES = 0x9901
 
 
 class AESZipDecrypter(BaseZipDecrypter):
@@ -149,7 +149,7 @@ class AESZipEncrypter(BaseZipEncrypter):
         self.hmac = HMAC.new(encmac_key, digestmod=SHA1Hash())
 
     def update_zipinfo(self, zipinfo):
-        zipinfo.wz_aes_vendor_id = WINZIP_AES_VENDOR_ID
+        zipinfo.wz_aes_vendor_id = WZ_AES_VENDOR_ID
         zipinfo.wz_aes_strength = self.aes_strength
         if self.force_wz_aes_version is not None:
             zipinfo.wz_aes_version = self.force_wz_aes_version
@@ -186,12 +186,12 @@ class AESZipInfo(ZipInfo):
         self.wz_aes_vendor_id = None
         self.wz_aes_strength = None
 
-    def decode_extra_winzip_aes(self, ln, extra):
+    def decode_extra_wz_aes(self, ln, extra):
         if ln == 7:
             counts = struct.unpack("<H2sBH", extra[4: ln+4])
         else:
             raise BadZipFile(
-                "Corrupt extra field %04x (size=%d)" % (EXTRA_WINZIP_AES, ln))
+                "Corrupt extra field %04x (size=%d)" % (EXTRA_WZ_AES, ln))
 
         self.wz_aes_version = counts[0]
         self.wz_aes_vendor_id = counts[1]
@@ -210,13 +210,13 @@ class AESZipInfo(ZipInfo):
 
     def get_extra_decoders(self):
         extra_decoders = super().get_extra_decoders()
-        extra_decoders[EXTRA_WINZIP_AES] = self.decode_extra_winzip_aes
+        extra_decoders[EXTRA_WZ_AES] = self.decode_extra_wz_aes
         return extra_decoders
 
     def encode_extra(self, crc, compress_type):
         wz_aes_extra = b''
         if self.wz_aes_vendor_id is not None:
-            compress_type = WINZIP_AES_COMPRESS_TYPE
+            compress_type = WZ_AES_COMPRESS_TYPE
             aes_version = self.wz_aes_version
             if aes_version is None:
                 if self.file_size < 20 | self.compress_type == ZIP_BZIP2:
@@ -227,16 +227,16 @@ class AESZipInfo(ZipInfo):
                     # the encrypted data.
                     # For bzip2, the compression already has integrity checks
                     # so CRC is not required.
-                    aes_version = WINZIP_AES_V2
+                    aes_version = WZ_AES_V2
                 else:
-                    aes_version = WINZIP_AES_V1
+                    aes_version = WZ_AES_V1
 
-            if aes_version == WINZIP_AES_V2:
+            if aes_version == WZ_AES_V2:
                 crc = 0
 
             wz_aes_extra = struct.pack(
                 "<3H2sBH",
-                EXTRA_WINZIP_AES,
+                EXTRA_WZ_AES,
                 7,  # extra block body length: H2sBH
                 aes_version,
                 self.wz_aes_vendor_id,
@@ -273,7 +273,7 @@ class AESZipExtFile(ZipExtFile):
     def _update_crc(self, newdata):
         if self._eof and self._decrypter:
             self._decrypter.check_integrity()
-            if self._zinfo.wz_aes_version == WINZIP_AES_V2 and self._expected_crc == 0:
+            if self._zinfo.wz_aes_version == WZ_AES_V2 and self._expected_crc == 0:
                 # CRC value should be 0 for AES vendor version 2.
                 return
 
@@ -292,10 +292,22 @@ class AESZipFile(ZipFile):
     zipinfo_cls = AESZipInfo
     zipextfile_cls = AESZipExtFile
 
+    def __init__(self, *args, **kwargs):
+        encryption = kwargs.pop('encryption', None)
+        encryption_kwargs = kwargs.pop('encryption_kwargs', None)
+        super().__init__(*args, **kwargs)
+        self.encryption = encryption
+        self.encryption_kwargs = encryption_kwargs
+
     def get_encrypter(self):
-        if self.encryption_method == WINZIP_AES:
+        if self.encryption == WZ_AES:
             if not self.pwd:
                 raise RuntimeError(
-                    '%s encryption requires a password.' % WINZIP_AES
+                    '%s encryption requires a password.' % WZ_AES
                 )
-            return AESZipEncrypter(pwd=self.pwd, **self.encryption_kwargs)
+            if self.encryption_kwargs is None:
+                encryption_kwargs = {}
+            else:
+                encryption_kwargs = self.encryption_kwargs
+
+            return AESZipEncrypter(pwd=self.pwd, **encryption_kwargs)

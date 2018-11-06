@@ -221,10 +221,10 @@ class WZAESTests(unittest.TestCase):
         """Not supplying a password when encrypting raises a RuntimeError"""
         fname = TESTFN
         with zipfile_aes.AESZipFile(fname, "w") as zipfp:
-            zipfp.setencryption(zipfile_aes.WINZIP_AES)
+            zipfp.setencryption(zipfile_aes.WZ_AES)
             with self.assertRaises(
                     RuntimeError,
-                    msg='%s encryption requires a password.' % zipfile_aes.WINZIP_AES
+                    msg='%s encryption requires a password.' % zipfile_aes.WZ_AES
             ):
                 zipfp.open('test', 'w')
 
@@ -234,7 +234,7 @@ class WZAESTests(unittest.TestCase):
         pwd = b'passwd'
         with zipfile_aes.AESZipFile(fname, "w") as zipfp:
             zipfp.setpassword(pwd)
-            zipfp.setencryption(zipfile_aes.WINZIP_AES)
+            zipfp.setencryption(zipfile_aes.WZ_AES)
             zipfp.writestr('test.txt', 'content')
 
         with zipfile_aes.AESZipFile(fname) as zipfp:
@@ -248,7 +248,7 @@ class WZAESTests(unittest.TestCase):
         with zipfile_aes.AESZipFile(fname, "w") as zipfp:
             zipfp.setpassword(pwd)
             zipfp.setencryption(
-                zipfile_aes.WINZIP_AES,
+                zipfile_aes.WZ_AES,
                 force_wz_aes_version=force_wz_aes_version
             )
             zipfp.writestr(content_fname, content)
@@ -279,7 +279,7 @@ class WZAESTests(unittest.TestCase):
         with zipfile_aes.AESZipFile(fname, "w") as zipfp:
             zipfp.setpassword(pwd)
             zipfp.setencryption(
-                zipfile_aes.WINZIP_AES,
+                zipfile_aes.WZ_AES,
                 nbits=nbits
             )
             with zipfp.open(content_fname, 'w') as zopen:
@@ -326,6 +326,44 @@ class WZAESTests(unittest.TestCase):
     def test_aes_invalid_strength(self):
         with self.assertRaises(RuntimeError):
             self.do_test_aes_strength(nbits='not correct')
+
+    def test_aes_encryption_via_init(self):
+        fname = TESTFN
+        pwd = b'passwd'
+        content_fname = 'test.txt'
+        content = b'content'
+        with zipfile_aes.AESZipFile(fname, encryption=zipfile_aes.WZ_AES) as zipfp:
+            zipfp.setpassword(pwd)
+            zipfp.writestr(content_fname, content)
+
+        with zipfile_aes.AESZipFile(fname) as zipfp:
+            zipfp.setpassword(pwd)
+            read_content = zipfp.read(content_fname)
+
+        self.assertEqual(content, read_content)
+
+    def test_aes_encryption_via_init_with_kwargs(self):
+        fname = TESTFN
+        pwd = b'passwd'
+        content_fname = 'test.txt'
+        content = b'content'
+        with zipfile_aes.AESZipFile(
+                fname,
+                'w',
+                encryption=zipfile_aes.WZ_AES,
+                encryption_kwargs={'nbits': 128}
+        ) as zipfp:
+            zipfp.setpassword(pwd)
+            zipfp.writestr(content_fname, content)
+
+        with zipfile_aes.AESZipFile(fname) as zipfp:
+            zipfp.setpassword(pwd)
+            zinfo = zipfp.NameToInfo[content_fname]
+            wz_aes_strength = zinfo.wz_aes_strength
+            read_content = zipfp.read(content_fname)
+
+        self.assertEqual(wz_aes_strength, 1)
+        self.assertEqual(content, read_content)
 
 
 class AbstractTestsWithRandomBinaryFiles:
@@ -445,7 +483,7 @@ class AbstractTestsWithRandomBinaryFiles:
 class WZAESStoredTestsWithRandomBinaryFiles(AbstractTestsWithRandomBinaryFiles,
                                        unittest.TestCase):
     compression = zipfile.ZIP_STORED
-    encryption_method = zipfile_aes.WINZIP_AES
+    encryption_method = zipfile_aes.WZ_AES
     pwd = b'this is a test password'
 
 
@@ -454,7 +492,7 @@ class WZAESStoredTestsWithRandomBinaryFiles(AbstractTestsWithRandomBinaryFiles,
 class WZAESDeflateTestsWithRandomBinaryFiles(AbstractTestsWithRandomBinaryFiles,
                                         unittest.TestCase):
     compression = zipfile.ZIP_DEFLATED
-    encryption_method = zipfile_aes.WINZIP_AES
+    encryption_method = zipfile_aes.WZ_AES
     pwd = b'this is a test password'
 
 
@@ -463,7 +501,7 @@ class WZAESDeflateTestsWithRandomBinaryFiles(AbstractTestsWithRandomBinaryFiles,
 class WZAESBzip2TestsWithRandomBinaryFiles(AbstractTestsWithRandomBinaryFiles,
                                       unittest.TestCase):
     compression = zipfile.ZIP_BZIP2
-    encryption_method = zipfile_aes.WINZIP_AES
+    encryption_method = zipfile_aes.WZ_AES
     pwd = b'this is a test password'
 
 
@@ -472,7 +510,7 @@ class WZAESBzip2TestsWithRandomBinaryFiles(AbstractTestsWithRandomBinaryFiles,
 class WZAESLzmaTestsWithRandomBinaryFiles(AbstractTestsWithRandomBinaryFiles,
                                      unittest.TestCase):
     compression = zipfile.ZIP_LZMA
-    encryption_method = zipfile_aes.WINZIP_AES
+    encryption_method = zipfile_aes.WZ_AES
     pwd = b'this is a test password'
 
 

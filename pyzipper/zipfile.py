@@ -1537,7 +1537,7 @@ class ZipFile:
         self.compresslevel = compresslevel
         self.mode = mode
         self.pwd = None
-        self.encryption_method = None
+        self.encryption = None
         self.encryption_kwargs = None
         self._comment = b''
         self._strict_timestamps = strict_timestamps
@@ -1758,8 +1758,8 @@ class ZipFile:
         else:
             self.pwd = None
 
-    def setencryption(self, encryption_method, **kwargs):
-        self.encryption_method = encryption_method
+    def setencryption(self, encryption, **kwargs):
+        self.encryption = encryption
         self.encryption_kwargs = kwargs
 
     def get_encrypter(self):
@@ -1867,7 +1867,7 @@ class ZipFile:
 
         zinfo.flag_bits = 0x00
         encrypter = None
-        if pwd is not None or self.encryption_method is not None:
+        if pwd is not None or self.encryption is not None:
             zinfo.flag_bits |= 0x01
             encrypter = self.get_encrypter()
             encrypter.update_zipinfo(zinfo)
