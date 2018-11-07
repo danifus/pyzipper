@@ -434,9 +434,9 @@ class ZipInfo (object):
         dt = self.date_time
         return dt[3] << 11 | dt[4] << 5 | (dt[5] // 2)
 
-    def encode_local_directory(self, *, filename, extract_version, reserved,
-                               flag_bits, compress_type, dostime, dosdate, crc,
-                               compress_size, file_size, extra):
+    def encode_local_header(self, *, filename, extract_version, reserved,
+                            flag_bits, compress_type, dostime, dosdate, crc,
+                            compress_size, file_size, extra):
         header = struct.pack(
             structFileHeader,
             stringFileHeader,
@@ -456,13 +456,12 @@ class ZipInfo (object):
 
     def zip64_local_header(self, zip64, file_size, compress_size):
         """If zip64 is required, return encoded extra block and other
-        parameters which may alter the local directory entry for this file.
+        parameters which may alter the local file header.
 
-        The local directory zip64 entry requires that, if the zip64 block is
-        present, it must contain both file_size and compress_size. This is
-        different to the central directory zip64 extra block which requires
-        only fields which need the extra zip64 size be present in the extra
-        block.
+        The local zip64 entry requires that, if the zip64 block is present, it
+        must contain both file_size and compress_size. This is different to the
+        central directory zip64 extra block which requires only fields which
+        need the extra zip64 size be present in the extra block.
         """
         min_version = 0
         extra = b''
@@ -558,7 +557,7 @@ class ZipInfo (object):
         self.extract_version = max(min_version, self.extract_version)
         self.create_version = max(min_version, self.create_version)
         filename, flag_bits = self._encodeFilenameFlags()
-        return self.encode_local_directory(
+        return self.encode_local_header(
             filename=filename,
             extract_version=self.extract_version,
             reserved=self.reserved,
@@ -1041,7 +1040,18 @@ class _Tellable:
 
 class ZipExtFile(io.BufferedIOBase):
     """File-like object for reading an archive member.
-       Is returned by ZipFile.open().
+
+    Is returned by ZipFile.open().
+
+    Responsible for reading the following parts of a zip file:
+
+        [local file header]
+        [encryption header]
+        [file data]
+        [data descriptor]
+
+    For symmetry, the _ZipWriteFile class is responsible for writing the same
+    sections.
     """
 
     # Max size supported by decompressor.
@@ -1056,7 +1066,7 @@ class ZipExtFile(io.BufferedIOBase):
     def __init__(self, fileobj, mode, zipinfo, close_fileobj=False, pwd=None):
         self._fileobj = fileobj
         self._zinfo = zipinfo
-        self.process_local_directory()
+        self.process_local_header()
         self.raise_for_unsupported_flags()
         self._close_fileobj = close_fileobj
 
@@ -1094,7 +1104,7 @@ class ZipExtFile(io.BufferedIOBase):
         except AttributeError:
             pass
 
-    def process_local_directory(self):
+    def process_local_header(self):
         """Read the local header and raise for any errors.
 
         The local header is largely a duplicate of the file's entry in the
