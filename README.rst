@@ -20,14 +20,14 @@ Usage
 
    secret_password = b'lost art of keeping a secret'
 
-   with pyzipper.AESZipFile('bla_new.zip',
+   with pyzipper.AESZipFile('new_test.zip',
                             'w',
                             compression=pyzipper.ZIP_LZMA,
                             encryption=pyzipper.WZ_AES) as zf:
        zf.pwd = secret_password
        zf.writestr('test.txt', "What ever you do, don't tell anyone!")
 
-   with pyzipper.AESZipFile('bla_new.zip') as zf:
+   with pyzipper.AESZipFile('new_test.zip') as zf:
        zf.pwd = secret_password
        my_secrets = zf.read('test.txt')
 
@@ -45,13 +45,13 @@ encryption kwargs:
 
    secret_password = b'lost art of keeping a secret'
 
-   with pyzipper.AESZipFile('bla_new.zip',
+   with pyzipper.AESZipFile('new_test.zip',
                             'w',
                             compression=pyzipper.ZIP_LZMA) as zf:
        zf.pwd = secret_password
        zf.setencryption(pyzipper.WZ_AES, nbits=128)
        zf.writestr('test.txt', "What ever you do, don't tell anyone!")
 
-   with pyzipper.AESZipFile('bla_new.zip') as zf:
+   with pyzipper.AESZipFile('new_test.zip') as zf:
        zf.pwd = secret_password
        my_secrets = zf.read('test.txt')
