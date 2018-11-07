@@ -1,4 +1,6 @@
+import io
 import struct
+import time
 import unittest
 from random import randint, random
 
@@ -9,6 +11,9 @@ from .test_zipfile import (
 
 from pyzipper import zipfile
 from pyzipper import zipfile_aes
+
+
+FIXEDTEST_SIZE = 1000
 
 
 try:
@@ -332,7 +337,10 @@ class WZAESTests(unittest.TestCase):
         pwd = b'passwd'
         content_fname = 'test.txt'
         content = b'content'
-        with zipfile_aes.AESZipFile(fname, encryption=zipfile_aes.WZ_AES) as zipfp:
+        with zipfile_aes.AESZipFile(
+                fname,
+                mode='w',
+                encryption=zipfile_aes.WZ_AES) as zipfp:
             zipfp.setpassword(pwd)
             zipfp.writestr(content_fname, content)
 
@@ -368,7 +376,7 @@ class WZAESTests(unittest.TestCase):
 
 class AbstractTestsWithRandomBinaryFiles:
     compression = None
-    encryption_method = None
+    encryption = None
     pwd = None
     encryption_kwargs = None
 
@@ -387,10 +395,14 @@ class AbstractTestsWithRandomBinaryFiles:
         unlink(TESTFN)
         unlink(TESTFN2)
 
+    def set_pwd_if_needed(self, zipfp):
+        if self.encryption and self.pwd:
+            zipfp.setpassword(self.pwd)
+
     def make_test_archive(self, f, compression):
         # Create the ZIP archive
         with zipfile_aes.AESZipFile(f, "w", compression) as zipfp:
-            if self.encryption_method:
+            if self.encryption:
                 if self.pwd:
                     zipfp.setpassword(self.pwd)
                 if self.encryption_kwargs:
@@ -398,7 +410,7 @@ class AbstractTestsWithRandomBinaryFiles:
                 else:
                     encryption_kwargs = {}
                 zipfp.setencryption(
-                    self.encryption_method,
+                    self.encryption,
                     **encryption_kwargs
                 )
             zipfp.write(TESTFN, "another.name")
@@ -409,8 +421,7 @@ class AbstractTestsWithRandomBinaryFiles:
 
         # Read the ZIP archive
         with zipfile_aes.AESZipFile(f, "r", compression) as zipfp:
-            if self.encryption_method and self.pwd:
-                zipfp.setpassword(self.pwd)
+            self.set_pwd_if_needed(zipfp)
             testdata = zipfp.read(TESTFN)
             self.assertEqual(len(testdata), len(self.data))
             self.assertEqual(testdata, self.data)
@@ -425,8 +436,7 @@ class AbstractTestsWithRandomBinaryFiles:
 
         # Read the ZIP archive
         with zipfile_aes.AESZipFile(f, "r", compression) as zipfp:
-            if self.encryption_method and self.pwd:
-                zipfp.setpassword(self.pwd)
+            self.set_pwd_if_needed(zipfp)
             zipdata1 = []
             with zipfp.open(TESTFN) as zipopen1:
                 while True:
@@ -460,8 +470,7 @@ class AbstractTestsWithRandomBinaryFiles:
 
         # Read the ZIP archive
         with zipfile_aes.AESZipFile(f, "r", compression) as zipfp:
-            if self.encryption_method and self.pwd:
-                zipfp.setpassword(self.pwd)
+            self.set_pwd_if_needed(zipfp)
             zipdata1 = []
             with zipfp.open(TESTFN) as zipopen1:
                 while True:
@@ -481,36 +490,281 @@ class AbstractTestsWithRandomBinaryFiles:
 
 @requires_pycrypto
 class WZAESStoredTestsWithRandomBinaryFiles(AbstractTestsWithRandomBinaryFiles,
-                                       unittest.TestCase):
+                                            unittest.TestCase):
     compression = zipfile.ZIP_STORED
-    encryption_method = zipfile_aes.WZ_AES
+    encryption = zipfile_aes.WZ_AES
     pwd = b'this is a test password'
 
 
 @requires_pycrypto
 @requires_zlib
 class WZAESDeflateTestsWithRandomBinaryFiles(AbstractTestsWithRandomBinaryFiles,
-                                        unittest.TestCase):
+                                             unittest.TestCase):
     compression = zipfile.ZIP_DEFLATED
-    encryption_method = zipfile_aes.WZ_AES
+    encryption = zipfile_aes.WZ_AES
     pwd = b'this is a test password'
 
 
 @requires_pycrypto
 @requires_bz2
 class WZAESBzip2TestsWithRandomBinaryFiles(AbstractTestsWithRandomBinaryFiles,
-                                      unittest.TestCase):
+                                           unittest.TestCase):
     compression = zipfile.ZIP_BZIP2
-    encryption_method = zipfile_aes.WZ_AES
+    encryption = zipfile_aes.WZ_AES
     pwd = b'this is a test password'
 
 
 @requires_pycrypto
 @requires_lzma
 class WZAESLzmaTestsWithRandomBinaryFiles(AbstractTestsWithRandomBinaryFiles,
-                                     unittest.TestCase):
+                                          unittest.TestCase):
     compression = zipfile.ZIP_LZMA
-    encryption_method = zipfile_aes.WZ_AES
+    encryption = zipfile_aes.WZ_AES
+    pwd = b'this is a test password'
+
+
+class AbstractTestZip64InSmallFiles:
+    # These tests test the ZIP64 functionality without using large files,
+    # see test_zipfile64 for proper tests.
+
+    @classmethod
+    def setUpClass(cls):
+        line_gen = (bytes("Test of zipfile line %d." % i, "ascii")
+                    for i in range(0, FIXEDTEST_SIZE))
+        cls.data = b'\n'.join(line_gen)
+
+    def setUp(self):
+        self._limit = zipfile.ZIP64_LIMIT
+        self._filecount_limit = zipfile.ZIP_FILECOUNT_LIMIT
+        zipfile.ZIP64_LIMIT = 1000
+        zipfile.ZIP_FILECOUNT_LIMIT = 9
+
+        # Make a source file with some lines
+        with open(TESTFN, "wb") as fp:
+            fp.write(self.data)
+
+    def set_pwd_if_needed(self, zipfp):
+        if self.encryption and self.pwd:
+            zipfp.setpassword(self.pwd)
+
+    def start_encryption(self, zipfp):
+        if self.encryption:
+            if self.pwd:
+                zipfp.setpassword(self.pwd)
+                if self.encryption_kwargs:
+                    encryption_kwargs = self.encryption_kwargs
+                else:
+                    encryption_kwargs = {}
+                zipfp.setencryption(
+                    self.encryption,
+                    **encryption_kwargs
+                )
+
+    def zip_test(self, f, compression):
+        # Create the ZIP archive
+        with zipfile_aes.AESZipFile(f, "w", compression, allowZip64=True) as zipfp:
+            self.start_encryption(zipfp)
+            zipfp.write(TESTFN, "another.name")
+            zipfp.write(TESTFN, TESTFN)
+            zipfp.writestr("strfile", self.data)
+
+        # Read the ZIP archive
+        with zipfile_aes.AESZipFile(f, "r", compression) as zipfp:
+            self.set_pwd_if_needed(zipfp)
+            self.assertEqual(zipfp.read(TESTFN), self.data)
+            self.assertEqual(zipfp.read("another.name"), self.data)
+            self.assertEqual(zipfp.read("strfile"), self.data)
+
+            # Print the ZIP directory
+            fp = io.StringIO()
+            zipfp.printdir(fp)
+
+            directory = fp.getvalue()
+            lines = directory.splitlines()
+            self.assertEqual(len(lines), 4) # Number of files + header
+
+            self.assertIn('File Name', lines[0])
+            self.assertIn('Modified', lines[0])
+            self.assertIn('Size', lines[0])
+
+            fn, date, time_, size = lines[1].split()
+            self.assertEqual(fn, 'another.name')
+            self.assertTrue(time.strptime(date, '%Y-%m-%d'))
+            self.assertTrue(time.strptime(time_, '%H:%M:%S'))
+            self.assertEqual(size, str(len(self.data)))
+
+            # Check the namelist
+            names = zipfp.namelist()
+            self.assertEqual(len(names), 3)
+            self.assertIn(TESTFN, names)
+            self.assertIn("another.name", names)
+            self.assertIn("strfile", names)
+
+            # Check infolist
+            infos = zipfp.infolist()
+            names = [i.filename for i in infos]
+            self.assertEqual(len(names), 3)
+            self.assertIn(TESTFN, names)
+            self.assertIn("another.name", names)
+            self.assertIn("strfile", names)
+            for i in infos:
+                self.assertEqual(i.file_size, len(self.data))
+
+            # check getinfo
+            for nm in (TESTFN, "another.name", "strfile"):
+                info = zipfp.getinfo(nm)
+                self.assertEqual(info.filename, nm)
+                self.assertEqual(info.file_size, len(self.data))
+
+            # Check that testzip doesn't raise an exception
+            zipfp.testzip()
+
+    def test_basic(self):
+        for f in get_files(self):
+            self.zip_test(f, self.compression)
+
+    def test_too_many_files(self):
+        # This test checks that more than 64k files can be added to an archive,
+        # and that the resulting archive can be read properly by ZipFile
+        zipf = zipfile_aes.AESZipFile(TESTFN, "w", self.compression,
+                                      allowZip64=True)
+        zipf.debug = 100
+        numfiles = 15
+        for i in range(numfiles):
+            zipf.writestr("foo%08d" % i, "%d" % (i**3 % 57))
+        self.assertEqual(len(zipf.namelist()), numfiles)
+        zipf.close()
+
+        zipf2 = zipfile_aes.AESZipFile(TESTFN, "r", self.compression)
+        self.assertEqual(len(zipf2.namelist()), numfiles)
+        for i in range(numfiles):
+            content = zipf2.read("foo%08d" % i).decode('ascii')
+            self.assertEqual(content, "%d" % (i**3 % 57))
+        zipf2.close()
+
+    def test_too_many_files_append(self):
+        zipf = zipfile_aes.AESZipFile(TESTFN, "w", self.compression,
+                                      allowZip64=False)
+        zipf.debug = 100
+        numfiles = 9
+        for i in range(numfiles):
+            zipf.writestr("foo%08d" % i, "%d" % (i**3 % 57))
+        self.assertEqual(len(zipf.namelist()), numfiles)
+        with self.assertRaises(zipfile.LargeZipFile):
+            zipf.writestr("foo%08d" % numfiles, b'')
+        self.assertEqual(len(zipf.namelist()), numfiles)
+        zipf.close()
+
+        zipf = zipfile_aes.AESZipFile(TESTFN, "a", self.compression,
+                               allowZip64=False)
+        zipf.debug = 100
+        self.assertEqual(len(zipf.namelist()), numfiles)
+        with self.assertRaises(zipfile.LargeZipFile):
+            zipf.writestr("foo%08d" % numfiles, b'')
+        self.assertEqual(len(zipf.namelist()), numfiles)
+        zipf.close()
+
+        zipf = zipfile_aes.AESZipFile(TESTFN, "a", self.compression,
+                                      allowZip64=True)
+        zipf.debug = 100
+        self.assertEqual(len(zipf.namelist()), numfiles)
+        numfiles2 = 15
+        for i in range(numfiles, numfiles2):
+            zipf.writestr("foo%08d" % i, "%d" % (i**3 % 57))
+        self.assertEqual(len(zipf.namelist()), numfiles2)
+        zipf.close()
+
+        zipf2 = zipfile_aes.AESZipFile(TESTFN, "r", self.compression)
+        self.assertEqual(len(zipf2.namelist()), numfiles2)
+        for i in range(numfiles2):
+            content = zipf2.read("foo%08d" % i).decode('ascii')
+            self.assertEqual(content, "%d" % (i**3 % 57))
+        zipf2.close()
+
+    def tearDown(self):
+        zipfile.ZIP64_LIMIT = self._limit
+        zipfile.ZIP_FILECOUNT_LIMIT = self._filecount_limit
+        unlink(TESTFN)
+        unlink(TESTFN2)
+
+
+class StoredTestZip64InSmallFiles(AbstractTestZip64InSmallFiles,
+                                  unittest.TestCase):
+    compression = zipfile.ZIP_STORED
+    encryption = zipfile_aes.WZ_AES
+    encryption_kwargs = {'nbits': 128}
+    pwd = b'this is a test password'
+
+    def large_file_exception_test(self, f, compression):
+        with zipfile_aes.AESZipFile(f, "w", compression, allowZip64=False) as zipfp:
+            self.start_encryption(zipfp)
+            self.assertRaises(zipfile.LargeZipFile,
+                              zipfp.write, TESTFN, "another.name")
+
+    def large_file_exception_test2(self, f, compression):
+        with zipfile_aes.AESZipFile(f, "w", compression, allowZip64=False) as zipfp:
+            self.start_encryption(zipfp)
+            self.assertRaises(zipfile.LargeZipFile,
+                              zipfp.writestr, "another.name", self.data)
+
+    def test_large_file_exception(self):
+        for f in get_files(self):
+            self.large_file_exception_test(f, zipfile.ZIP_STORED)
+            self.large_file_exception_test2(f, zipfile.ZIP_STORED)
+
+    def test_absolute_arcnames(self):
+        with zipfile_aes.AESZipFile(TESTFN2, "w", zipfile.ZIP_STORED,
+                                    allowZip64=True) as zipfp:
+            self.start_encryption(zipfp)
+            zipfp.write(TESTFN, "/absolute")
+
+        with zipfile_aes.AESZipFile(TESTFN2, "r", zipfile.ZIP_STORED) as zipfp:
+            self.set_pwd_if_needed(zipfp)
+            self.assertEqual(zipfp.namelist(), ["absolute"])
+
+    def test_append(self):
+        # Test that appending to the Zip64 archive doesn't change
+        # extra fields of existing entries.
+        with zipfile_aes.AESZipFile(TESTFN2, "w", allowZip64=True) as zipfp:
+            self.start_encryption(zipfp)
+            zipfp.writestr("strfile", self.data)
+        with zipfile_aes.AESZipFile(TESTFN2, "r", allowZip64=True) as zipfp:
+            self.set_pwd_if_needed(zipfp)
+            zinfo = zipfp.getinfo("strfile")
+            extra = zinfo.extra
+        with zipfile_aes.AESZipFile(TESTFN2, "a", allowZip64=True) as zipfp:
+            self.start_encryption(zipfp)
+            zipfp.writestr("strfile2", self.data)
+        with zipfile_aes.AESZipFile(TESTFN2, "r", allowZip64=True) as zipfp:
+            self.set_pwd_if_needed(zipfp)
+            zinfo = zipfp.getinfo("strfile")
+            self.assertEqual(zinfo.extra, extra)
+
+
+@requires_zlib
+class DeflateTestZip64InSmallFiles(AbstractTestZip64InSmallFiles,
+                                   unittest.TestCase):
+    compression = zipfile.ZIP_DEFLATED
+    encryption = zipfile_aes.WZ_AES
+    encryption_kwargs = {'nbits': 128}
+    pwd = b'this is a test password'
+
+
+@requires_bz2
+class Bzip2TestZip64InSmallFiles(AbstractTestZip64InSmallFiles,
+                                 unittest.TestCase):
+    compression = zipfile.ZIP_BZIP2
+    encryption = zipfile_aes.WZ_AES
+    encryption_kwargs = {'nbits': 128}
+    pwd = b'this is a test password'
+
+
+@requires_lzma
+class LzmaTestZip64InSmallFiles(AbstractTestZip64InSmallFiles,
+                                unittest.TestCase):
+    compression = zipfile.ZIP_LZMA
+    encryption = zipfile_aes.WZ_AES
+    encryption_kwargs = {'nbits': 128}
     pwd = b'this is a test password'
 
 
