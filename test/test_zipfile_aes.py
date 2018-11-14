@@ -185,7 +185,7 @@ class WZAESKnownFileTests(unittest.TestCase):
         self.assertEqual(content, b'This is a test file for AES encryption.')
 
     def test_decrypt_bad_crc_ae2(self):
-        """Decrypting an encrypted AE-2 with an, incorrect non-zero CRC raises
+        """Decrypting an encrypted AE-2 with an incorrect non-zero CRC raises
         BadZipFile.
 
         CRC is not supposed to be used for AE-2 encryption and should be set
@@ -726,7 +726,7 @@ class AbstractTestZip64InSmallFiles:
         zipf.close()
 
         zipf = zipfile_aes.AESZipFile(TESTFN, "a", self.compression,
-                               allowZip64=False)
+                                      allowZip64=False)
         zipf.debug = 100
         self.assertEqual(len(zipf.namelist()), numfiles)
         with self.assertRaises(zipfile.LargeZipFile):
