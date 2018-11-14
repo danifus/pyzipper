@@ -1,4 +1,5 @@
 import io
+import os
 import struct
 import time
 import unittest
@@ -372,6 +373,75 @@ class WZAESTests(unittest.TestCase):
 
         self.assertEqual(wz_aes_strength, 1)
         self.assertEqual(content, read_content)
+
+    def test_seek_tell(self):
+        # Test seek functionality
+        txt = b"Where's Bruce?"
+        bloc = txt.find(b"Bruce")
+        pwd = b'passwd'
+        # Check seek on a file
+        with zipfile_aes.AESZipFile(TESTFN, "w") as zipf:
+            zipf.pwd = pwd
+            zipf.setencryption(zipfile_aes.WZ_AES, nbits=128)
+            zipf.writestr("foo.txt", txt)
+        with zipfile_aes.AESZipFile(TESTFN, "r") as zipf:
+            zipf.pwd = pwd
+            with zipf.open("foo.txt", "r") as fp:
+                fp.seek(bloc, os.SEEK_SET)
+                self.assertEqual(fp.tell(), bloc)
+                fp.seek(-bloc, os.SEEK_CUR)
+                self.assertEqual(fp.tell(), 0)
+                fp.seek(bloc, os.SEEK_CUR)
+                self.assertEqual(fp.tell(), bloc)
+                self.assertEqual(fp.read(5), txt[bloc:bloc+5])
+                fp.seek(0, os.SEEK_END)
+                self.assertEqual(fp.tell(), len(txt))
+                fp.seek(0, os.SEEK_SET)
+                self.assertEqual(fp.tell(), 0)
+
+        # Check seek on memory file
+        data = io.BytesIO()
+        with zipfile_aes.AESZipFile(data, mode="w") as zipf:
+            zipf.pwd = pwd
+            zipf.setencryption(zipfile_aes.WZ_AES, nbits=128)
+            zipf.writestr("foo.txt", txt)
+        with zipfile_aes.AESZipFile(data, mode="r") as zipf:
+            zipf.pwd = pwd
+            with zipf.open("foo.txt", "r") as fp:
+                fp.seek(bloc, os.SEEK_SET)
+                self.assertEqual(fp.tell(), bloc)
+                fp.seek(-bloc, os.SEEK_CUR)
+                self.assertEqual(fp.tell(), 0)
+                fp.seek(bloc, os.SEEK_CUR)
+                self.assertEqual(fp.tell(), bloc)
+                self.assertEqual(fp.read(5), txt[bloc:bloc+5])
+
+                # Make sure that the second read after seeking back beyond
+                # _readbuffer returns the same content (ie. rewind to the start of
+                # the file to read forward to the required position).
+                old_read_size = fp.MIN_READ_SIZE
+                fp.MIN_READ_SIZE = 1
+                fp._readbuffer = b''
+                fp._offset = 0
+                fp.seek(0, os.SEEK_SET)
+                self.assertEqual(fp.tell(), 0)
+                fp.seek(bloc, os.SEEK_CUR)
+                self.assertEqual(fp.read(5), txt[bloc:bloc+5])
+                fp.MIN_READ_SIZE = old_read_size
+
+                fp.seek(0, os.SEEK_END)
+                self.assertEqual(fp.tell(), len(txt))
+                fp.seek(0, os.SEEK_SET)
+                self.assertEqual(fp.tell(), 0)
+
+                fp.seek(0, os.SEEK_END)
+                fp._readbuffer = b''
+                fp.seek(0, os.SEEK_SET)
+                self.assertEqual(fp.read(5), txt[bloc:bloc+5])
+
+                # Read the file completely to definitely call any eof integrity
+                # checks (hmac/crc) and make sure they still pass.
+                fp.read()
 
 
 class AbstractTestsWithRandomBinaryFiles:
