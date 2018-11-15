@@ -901,6 +901,16 @@ class CRCZipDecrypter(BaseZipDecrypter):
 
 
 class LZMACompressor:
+    # The LZMA SDK version is not related to the XZ Util's liblzma version that
+    # the python library links to. The LZMA SDK is associated with the 7-zip
+    # project by Igor Pavlov. If there is a breaking change in how the
+    # properties are packed or their contents, these version identifiers can be
+    # used to specify the strategy for decompression. While the version of the
+    # LZMA SDK changes with each new version of 7zip, I don't believe there has
+    # been any breaking changes since the version supplied here (but I haven't
+    # spent much time confirming if that is true).
+    LZMA_SDK_MAJOR_VERSION = 9
+    LZMA_SDK_MINOR_VERSION = 4
 
     def __init__(self):
         self._comp = None
@@ -910,7 +920,13 @@ class LZMACompressor:
         self._comp = lzma.LZMACompressor(lzma.FORMAT_RAW, filters=[
             lzma._decode_filter_properties(lzma.FILTER_LZMA1, props)
         ])
-        return struct.pack('<BBH', 9, 4, len(props)) + props
+        header = struct.pack(
+            '<BBH',
+            self.LZMA_SDK_MAJOR_VERSION,
+            self.LZMA_SDK_MINOR_VERSION,
+            len(props)
+        ) + props
+        return header
 
     def compress(self, data):
         if self._comp is None:
@@ -924,6 +940,24 @@ class LZMACompressor:
 
 
 class LZMADecompressor:
+    # By itself, this decompressor needs an end of stream marker to know when
+    # the compressed stream has finished. If there is no end of stream marker,
+    # but the zip file length is known, the file can still be processed by
+    # ensuring we only pass data to the length of 'compress_size' to the
+    # decompressor.
+    #
+    # There should be a check to make sure either the end of stream marker flag
+    # is set or the 'compress_size' is provided to catch malformed files.
+    #
+    # https://sourceforge.net/p/lzmautils/discussion/708858/thread/da2a47a8/
+    # (2011-12-06)
+    # "The raw decoder API works only with streams that have end of
+    # payload/stream marker. The raw stream APIs don't support much else than
+    # what would be valid inside a .xz file.
+    # The .lzma file decoder (lzma_alone_decoder) works with files that have a
+    # known size in the header and no end marker. It's handled as a special
+    # case internally and is not exported to raw decoder API; maybe it should
+    # be."
 
     def __init__(self):
         self._decomp = None
@@ -935,7 +969,8 @@ class LZMADecompressor:
             self._unconsumed += data
             if len(self._unconsumed) <= 4:
                 return b''
-            psize, = struct.unpack('<H', self._unconsumed[2:4])
+            major_version, minor_version, psize = struct.unpack(
+                '<BBH', self._unconsumed[:4])
             if len(self._unconsumed) <= 4 + psize:
                 return b''
 
