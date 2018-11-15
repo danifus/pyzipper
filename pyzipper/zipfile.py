@@ -703,7 +703,10 @@ class ZipInfo (object):
         try:
             return self.filename.encode('ascii'), self.flag_bits
         except UnicodeEncodeError:
-            return self.filename.encode('utf-8'), self.flag_bits | _MASK_UTF_FILENAME
+            return (
+                self.filename.encode('utf-8'),
+                self.flag_bits | _MASK_UTF_FILENAME
+            )
 
     def decode_extra_zip64(self, ln, extra, is_central_directory=True):
 
@@ -745,7 +748,8 @@ class ZipInfo (object):
 
             # For completeness - The spec defines a way for handling a larger
             # number of disks than can fit into 4 bytes. As zipfile currently
-            # doesn't support multiple disks we don't do anything with this field.
+            # doesn't support multiple disks we don't do anything with this
+            # field.
             # if self.diskno == 0xffff:
             #     self.diskno = counts[zip64_field_cnt]
             #     zip64_field_cnt += 1
@@ -762,7 +766,9 @@ class ZipInfo (object):
         while len(extra) >= 4:
             tp, ln = struct.unpack('<HH', extra[:4])
             if ln+4 > len(extra):
-                raise BadZipFile("Corrupt extra field %04x (size=%d)" % (tp, ln))
+                raise BadZipFile(
+                    "Corrupt extra field %04x (size=%d)" % (tp, ln)
+                )
             try:
                 extra_decoders[tp](ln, extra)
             except KeyError:
@@ -836,7 +842,7 @@ class BaseZipDecrypter:
 
 
 class CRCZipDecrypter(BaseZipDecrypter):
-    """PKWARE Encryption Decryptor
+    """PKWARE Encryption Decrypter
 
     ZIP supports a password-based form of encryption. Even though known
     plaintext attacks have been found against it, it is still useful
@@ -1232,9 +1238,13 @@ class ZipExtFile(io.BufferedIOBase):
         else:
             descr = compressor_names.get(compress_type)
             if descr:
-                raise NotImplementedError("compression type %d (%s)" % (compress_type, descr))
+                raise NotImplementedError(
+                    "compression type %d (%s)" % (compress_type, descr)
+                )
             else:
-                raise NotImplementedError("compression type %d" % (compress_type,))
+                raise NotImplementedError(
+                    "compression type %d" % (compress_type,)
+                )
 
     def setup_crczipdecrypter(self):
         if not self._pwd:
@@ -1314,7 +1324,9 @@ class ZipExtFile(io.BufferedIOBase):
 
     def read(self, n=-1):
         """Read and return up to n bytes.
-        If the argument is omitted, None, or negative, data is read and returned until EOF is reached..
+
+        If the argument is omitted, None, or negative, data is read and
+        returned until EOF is reached.
         """
         if n is None or n < 0:
             buf = self._readbuffer[self._offset:]
@@ -1488,7 +1500,8 @@ class ZipExtFile(io.BufferedIOBase):
         buff_offset = read_offset + self._offset
 
         if buff_offset >= 0 and buff_offset < len(self._readbuffer):
-            # Just move the _offset index if the new position is in the _readbuffer
+            # Just move the _offset index if the new position is in the
+            # _readbuffer
             self._offset = buff_offset
             read_offset = 0
         elif read_offset < 0:
@@ -1507,7 +1520,10 @@ class ZipExtFile(io.BufferedIOBase):
     def tell(self):
         if not self._seekable:
             raise io.UnsupportedOperation("underlying stream is not seekable")
-        filepos = self._zinfo.file_size - self._left - len(self._readbuffer) + self._offset
+        filepos = (
+            self._zinfo.file_size - self._left - len(self._readbuffer)
+            + self._offset
+        )
         return filepos
 
 
@@ -1621,8 +1637,8 @@ class ZipFile:
 
     def __init__(self, file, mode="r", compression=ZIP_STORED, allowZip64=True,
                  compresslevel=None, *, strict_timestamps=True):
-        """Open the ZIP file with mode read 'r', write 'w', exclusive create 'x',
-        or append 'a'."""
+        """Open the ZIP file with mode read 'r', write 'w', exclusive create
+        'x', or append 'a'."""
         if mode not in ('r', 'w', 'x', 'a'):
             raise ValueError("ZipFile requires mode 'r', 'w', 'x', or 'a'")
 
@@ -1873,7 +1889,9 @@ class ZipFile:
     @comment.setter
     def comment(self, comment):
         if not isinstance(comment, bytes):
-            raise TypeError("comment: expected bytes, got %s" % type(comment).__name__)
+            raise TypeError(
+                "comment: expected bytes, got %s" % type(comment).__name__
+            )
         # check for valid comment length
         if len(comment) > ZIP_MAX_COMMENT:
             import warnings
@@ -1959,7 +1977,8 @@ class ZipFile:
                              "another write handle open on it. "
                              "Close the first handle before opening another.")
 
-        # Sizes and CRC are overwritten with correct data after processing the file
+        # Sizes and CRC are overwritten with correct data after processing the
+        # file
         if not hasattr(zinfo, 'file_size'):
             zinfo.file_size = 0
         zinfo.compress_size = 0
@@ -2141,7 +2160,7 @@ class ZipFile:
                     self.fp.seek(self.start_dir)
                 zinfo.header_offset = self.fp.tell()  # Start of header bytes
                 if zinfo.compress_type == ZIP_LZMA:
-                # Compressed data includes an end-of-stream (EOS) marker
+                    # Compressed data includes an end-of-stream (EOS) marker
                     zinfo.flag_bits |= _MASK_COMPRESS_OPTION_1
 
                 self._writecheck(zinfo)

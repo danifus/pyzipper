@@ -243,7 +243,8 @@ class AESZipInfo(ZipInfo):
         return wz_aes_extra, crc, compress_type
 
     def encode_local_directory(self, *, crc, compress_type, extra, **kwargs):
-        wz_aes_extra, crc, compress_type = self.encode_extra(crc, compress_type)
+        wz_aes_extra, crc, compress_type = self.encode_extra(
+            crc, compress_type)
         return super().encode_local_directory(
             crc=crc,
             compress_type=compress_type,
@@ -251,8 +252,10 @@ class AESZipInfo(ZipInfo):
             **kwargs
         )
 
-    def encode_central_directory(self, *, crc, compress_type, extra_data, **kwargs):
-        wz_aes_extra, crc, compress_type = self.encode_extra(crc, compress_type)
+    def encode_central_directory(self, *, crc, compress_type, extra_data,
+                                 **kwargs):
+        wz_aes_extra, crc, compress_type = self.encode_extra(
+            crc, compress_type)
         return super().encode_central_directory(
             crc=crc,
             compress_type=compress_type,
@@ -268,7 +271,8 @@ class AESZipExtFile(ZipExtFile):
                 'File %r is encrypted with %s encryption and requires a '
                 'password.' % (self.name, WZ_AES)
             )
-        encryption_header_length = AESZipDecrypter.encryption_header_length(self._zinfo)
+        encryption_header_length = AESZipDecrypter.encryption_header_length(
+            self._zinfo)
         self.encryption_header = self._fileobj.read(encryption_header_length)
         # Adjust read size for encrypted files since the start of the file
         # may be used for the encryption/password information.
