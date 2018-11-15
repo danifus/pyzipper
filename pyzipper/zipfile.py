@@ -829,21 +829,10 @@ def _gen_crc(crc):
 
 class BaseZipDecrypter:
 
-    def __init__(self, zef_file, zinfo, pwd):
-        self.zef_file = zef_file
-        self.pwd = pwd
-        self._zinfo = zinfo
-
-    def offset(self):
-        return 0
-
     def decrypt(self, data):
         raise NotImplementedError(
             'BaseZipDecrypter implementations must implement `decrypt`.'
         )
-
-    def check_integrity(self):
-        pass
 
 
 class CRCZipDecrypter(BaseZipDecrypter):
@@ -854,12 +843,13 @@ class CRCZipDecrypter(BaseZipDecrypter):
     to be able to get data out of such a file.
 
     Usage:
-        zd = CRCZipDecrypter(fid, zinfo, mypwd)
+        zd = CRCZipDecrypter(zinfo, mypwd, encryption_header)
         plain_bytes = zd.decrypt(cypher_bytes)
     """
 
-    def __init__(self, zef_file, zinfo, pwd):
-        super().__init__(zef_file, zinfo, pwd)
+    encryption_header_length = 12
+
+    def __init__(self, zinfo, pwd, encryption_header):
 
         self.key0 = 305419896
         self.key1 = 591751049
@@ -878,16 +868,15 @@ class CRCZipDecrypter(BaseZipDecrypter):
         #  completely random, while the 12th contains the MSB of the CRC,
         #  or the MSB of the file time depending on the header type
         #  and is used to check the correctness of the password.
-        header = zef_file.read(12)
-        h = self.decrypt(header[0:12])
-        if self._zinfo.use_datadescripter:
+        h = self.decrypt(encryption_header[0:12])
+        if zinfo.use_datadescripter:
             # compare against the file type from extended local headers
-            check_byte = (self._zinfo._raw_time >> 8) & 0xff
+            check_byte = (zinfo._raw_time >> 8) & 0xff
         else:
             # compare against the CRC otherwise
-            check_byte = (self._zinfo.CRC >> 24) & 0xff
+            check_byte = (zinfo.CRC >> 24) & 0xff
         if h[11] != check_byte:
-            raise RuntimeError("Bad password for file %r" % self._zinfo.filename)
+            raise RuntimeError("Bad password for file %r" % zinfo.filename)
 
     def crc32(self, ch, crc):
         """Compute the CRC32 primitive on one byte."""
@@ -898,11 +887,6 @@ class CRCZipDecrypter(BaseZipDecrypter):
         self.key1 = (self.key1 + (self.key0 & 0xFF)) & 0xFFFFFFFF
         self.key1 = (self.key1 * 134775813 + 1) & 0xFFFFFFFF
         self.key2 = self.crc32(self.key1 >> 24, self.key2)
-
-    def offset(self):
-        # Adjust read size for encrypted files since the first 12 bytes
-        # are for the encryption/password information.
-        return 12
 
     def decrypt(self, data):
         """Decrypt a bytes object."""
@@ -1136,7 +1120,7 @@ class ZipExtFile(io.BufferedIOBase):
             pass
 
         if self._zinfo.is_encrypted:
-            self._decrypter_cls = self.get_decrypter_cls()
+            self._decrypter_cls = self.setup_decrypter()
         else:
             self._decrypter_cls = None
         # Compress start is the start of the file data. It is after any
@@ -1217,21 +1201,34 @@ class ZipExtFile(io.BufferedIOBase):
             else:
                 raise NotImplementedError("compression type %d" % (compress_type,))
 
-    def get_decrypter_cls(self):
+    def setup_crczipdecrypter(self):
+        if not self._pwd:
+            raise RuntimeError("File %r is encrypted, password "
+                               "required for extraction" % self.name)
+
+        self.encryption_header = self._fileobj.read(
+            CRCZipDecrypter.encryption_header_length)
+        # Adjust read size for encrypted files since the start of the file
+        # may be used for the encryption/password information.
+        self._orig_compress_left -= CRCZipDecrypter.encryption_header_length
         return CRCZipDecrypter
 
-    def get_decrypter(self):
-        # check for encrypted flag & handle password
-        decrypter = None
-        if self._zinfo.is_encrypted:
-            if not self._pwd:
-                raise RuntimeError("File %r is encrypted, password "
-                                   "required for extraction" % self.name)
+    def setup_decrypter(self):
+        return self.setup_crczipdecrypter()
 
-            decrypter = self._decrypter_cls(self._fileobj, self._zinfo, self._pwd)
-            # Adjust read size for encrypted files since the start of the file
-            # may be used for the encryption/password information.
-            self._compress_left -= decrypter.offset()
+    def get_decrypter_kwargs(self):
+        return {
+            'pwd': self._pwd,
+            'encryption_header': self.encryption_header,
+        }
+
+    def get_decrypter(self):
+        decrypter = None
+        if self._decrypter_cls is not None:
+            decrypter = self._decrypter_cls(
+                self._zinfo,
+                **self.get_decrypter_kwargs()
+            )
         return decrypter
 
     def __repr__(self):
@@ -1319,9 +1316,17 @@ class ZipExtFile(io.BufferedIOBase):
             # No need to compute the CRC if we don't have a reference value
             return
         self._running_crc = crc32(newdata, self._running_crc)
+
+    def check_crc(self):
+        if self._expected_crc is None:
+            # No need to compute the CRC if we don't have a reference value
+            return
         # Check the CRC if we're at the end of the file
         if self._eof and self._running_crc != self._expected_crc:
             raise BadZipFile("Bad CRC-32 for file %r" % self.name)
+
+    def check_integrity(self):
+        self.check_crc()
 
     def read1(self, n):
         """Read up to n bytes with at most one read() system call."""
@@ -1394,6 +1399,8 @@ class ZipExtFile(io.BufferedIOBase):
         if self._left <= 0:
             self._eof = True
         self._update_crc(data)
+        if self._eof:
+            self.check_integrity()
         return data
 
     def _read2(self, n):

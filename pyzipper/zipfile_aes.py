@@ -20,71 +20,63 @@ WZ_AES_VENDOR_ID = b'AE'
 
 EXTRA_WZ_AES = 0x9901
 
+WZ_SALT_LENGTHS = {
+    1: 8,   # 128 bit
+    2: 12,  # 192 bit
+    3: 16,  # 256 bit
+}
+WZ_KEY_LENGTHS = {
+    1: 16,  # 128 bit
+    2: 24,  # 192 bit
+    3: 32,  # 256 bit
+}
+
 
 class AESZipDecrypter(BaseZipDecrypter):
 
-    def __init__(self, zef_file, zinfo, pwd):
-        super().__init__(zef_file, zinfo, pwd)
-        self.zef_file = zef_file
-        self.zinfo = zinfo
+    hmac_size = 10
 
-        salt_lengths = {
-            1: 8,   # 128 bit
-            2: 12,  # 192 bit
-            3: 16,  # 256 bit
-        }
-        self.salt_length = salt_lengths[self._zinfo.wz_aes_strength]
-        key_lengths = {
-            1: 16,  # 128 bit
-            2: 24,  # 192 bit
-            3: 32,  # 256 bit
-        }
-        self.key_length = key_lengths[self._zinfo.wz_aes_strength]
+    def __init__(self, zinfo, pwd, encryption_header):
+        self.filename = zinfo.filename
 
-        self.mac = b''
-        self.mac_size = 10
-        self.compress_left = zinfo.compress_size - self.offset() - self.mac_size
+        key_length = WZ_KEY_LENGTHS[zinfo.wz_aes_strength]
+        salt_length = WZ_SALT_LENGTHS[zinfo.wz_aes_strength]
 
         salt = struct.unpack(
-            "<{}s".format(self.salt_length),
-            zef_file.read(self.salt_length)
+            "<{}s".format(salt_length),
+            encryption_header[:salt_length]
         )[0]
         pwd_verify_length = 2
-        pwd_verify = zef_file.read(pwd_verify_length)
-        dkLen = 2*self.key_length + pwd_verify_length
-        keymaterial = PBKDF2(self.pwd, salt, count=1000, dkLen=dkLen)
+        pwd_verify = encryption_header[salt_length:]
+        dkLen = 2*key_length + pwd_verify_length
+        keymaterial = PBKDF2(pwd, salt, count=1000, dkLen=dkLen)
 
-        encpwdverify = keymaterial[2*self.key_length:]
+        encpwdverify = keymaterial[2*key_length:]
         if encpwdverify != pwd_verify:
-            raise RuntimeError("Bad password for file %r" % self._zinfo.filename)
+            raise RuntimeError("Bad password for file %r" % zinfo.filename)
 
-        enckey = keymaterial[:self.key_length]
+        enckey = keymaterial[:key_length]
         self.decypter = AES.new(
             enckey,
             AES.MODE_CTR,
             counter=Counter.new(nbits=128, little_endian=True)
         )
-        encmac_key = keymaterial[self.key_length:2*self.key_length]
+        encmac_key = keymaterial[key_length:2*key_length]
         self.hmac = HMAC.new(encmac_key, digestmod=SHA1Hash())
 
-    def offset(self):
+    @staticmethod
+    def encryption_header_length(zinfo):
         # salt_length + pwd_verify_length
-        return self.salt_length + 2
+        salt_length = WZ_SALT_LENGTHS[zinfo.wz_aes_strength]
+        return salt_length + 2
 
     def decrypt(self, data):
-        if len(data) > self.compress_left:
-            compress_data = data[:self.compress_left]
-            self.mac += data[self.compress_left:]
-            data = compress_data
-            if not data:
-                data = b''
         self.hmac.update(data)
-        self.compress_left -= len(data)
         return self.decypter.decrypt(data)
 
-    def check_integrity(self):
-        if self.hmac.digest()[:10] != self.mac:
-            raise BadZipFile("Bad HMAC check for file %r" % self.zinfo.filename)
+    def check_hmac(self, hmac_check):
+        if self.hmac.digest()[:10] != hmac_check:
+            raise BadZipFile("Bad HMAC check for file %r" % self.filename)
 
 
 class BaseZipEncrypter:
@@ -106,6 +98,11 @@ class BaseZipEncrypter:
 class AESZipEncrypter(BaseZipEncrypter):
 
     def __init__(self, pwd, nbits=256, force_wz_aes_version=None):
+        if not pwd:
+            raise RuntimeError(
+                '%s encryption requires a password.' % WZ_AES
+            )
+
         if nbits not in (128, 192, 256):
             raise RuntimeError(
                 "`nbits` must be one of 128, 192, 256. Got '%s'" % nbits
@@ -265,27 +262,44 @@ class AESZipInfo(ZipInfo):
 
 class AESZipExtFile(ZipExtFile):
 
-    def get_decrypter_cls(self):
+    def setup_aeszipdecrypter(self):
+        if not self._pwd:
+            raise RuntimeError(
+                'File %r is encrypted with %s encryption and requires a '
+                'password.' % (self.name, WZ_AES)
+            )
+        encryption_header_length = AESZipDecrypter.encryption_header_length(self._zinfo)
+        self.encryption_header = self._fileobj.read(encryption_header_length)
+        # Adjust read size for encrypted files since the start of the file
+        # may be used for the encryption/password information.
+        self._orig_compress_left -= encryption_header_length
+        # Also remove the hmac length from the end of the file.
+        self._orig_compress_left -= AESZipDecrypter.hmac_size
+
+        return AESZipDecrypter
+
+    def setup_decrypter(self):
         if self._zinfo.wz_aes_version is not None:
-            return AESZipDecrypter
-        return super().get_decrypter_cls()
+            return self.setup_aeszipdecrypter()
+        return super().setup_decrypter()
 
-    def _update_crc(self, newdata):
-        if self._eof and self._decrypter:
-            self._decrypter.check_integrity()
-            if self._zinfo.wz_aes_version == WZ_AES_V2 and self._expected_crc == 0:
+    def check_wz_aes(self):
+        hmac_check = self._fileobj.read(self._decrypter.hmac_size)
+        self._decrypter.check_hmac(hmac_check)
+
+    def check_integrity(self):
+        if self._zinfo.wz_aes_version is not None:
+            self.check_wz_aes()
+            if self._expected_crc is not None and self._expected_crc != 0:
+                # Not part of the spec but still check the CRC if it is
+                # supplied when WZ_AES_V2 is specified (no CRC check and CRC
+                # should be 0).
+                self.check_crc()
+            elif self._zinfo.wz_aes_version != WZ_AES_V2:
                 # CRC value should be 0 for AES vendor version 2.
-                return
-
-        # Update the CRC using the given data.
-        if self._expected_crc is None:
-            # No need to compute the CRC if we don't have a reference value
-            return
-        self._running_crc = crc32(newdata, self._running_crc)
-        # Check the CRC if we're at the end of the file
-
-        if self._eof and self._running_crc != self._expected_crc:
-            raise BadZipFile("Bad CRC-32 for file %r" % self.name)
+                self.check_crc()
+        else:
+            super().check_integrity()
 
 
 class AESZipFile(ZipFile):
@@ -301,10 +315,6 @@ class AESZipFile(ZipFile):
 
     def get_encrypter(self):
         if self.encryption == WZ_AES:
-            if not self.pwd:
-                raise RuntimeError(
-                    '%s encryption requires a password.' % WZ_AES
-                )
             if self.encryption_kwargs is None:
                 encryption_kwargs = {}
             else:
