@@ -1108,43 +1108,57 @@ class ZipExtFile(io.BufferedIOBase):
     def __init__(self, fileobj, mode, zipinfo, close_fileobj=False, pwd=None):
         self._fileobj = fileobj
         self._zinfo = zipinfo
+        self._close_fileobj = close_fileobj
+        self._pwd = pwd
+
         self.process_local_header()
         self.raise_for_unsupported_flags()
-        self._close_fileobj = close_fileobj
 
         self._compress_type = zipinfo.compress_type
-        self._compress_left = zipinfo.compress_size
-        self._left = zipinfo.file_size
-
-        self._decompressor = self.get_decompressor(self._compress_type)
-
-        self._eof = False
-        self._readbuffer = b''
-        self._offset = 0
-
+        self._orig_compress_left = zipinfo.compress_size
         self.newlines = None
 
         self.mode = mode
         self.name = zipinfo.filename
 
-        self._decrypter = self.get_decrypter(pwd)
-
         if hasattr(zipinfo, 'CRC'):
             self._expected_crc = zipinfo.CRC
-            self._running_crc = crc32(b'')
+            self._orig_start_crc = crc32(b'')
         else:
             self._expected_crc = None
+            self._orig_start_crc = None
 
         self._seekable = False
         try:
             if fileobj.seekable():
-                self._orig_compress_start = fileobj.tell()
-                self._orig_compress_size = zipinfo.compress_size
-                self._orig_file_size = zipinfo.file_size
-                self._orig_start_crc = self._running_crc
                 self._seekable = True
         except AttributeError:
             pass
+
+        if self._zinfo.is_encrypted:
+            self._decrypter_cls = self.get_decrypter_cls()
+        else:
+            self._decrypter_cls = None
+        # Compress start is the start of the file data. It is after any
+        # encryption header, if the encryption_header is present.
+        self._compress_start = fileobj.tell()
+        self.read_init()
+
+    def read_init(self):
+        self._running_crc = self._orig_start_crc
+        # Remaining compressed bytes remaining to be read.
+        self._compress_left = self._orig_compress_left
+        # Remaining number of uncompressed bytes not returned to the calling
+        # application.
+        self._left = self._zinfo.file_size
+        # Uncompressed data ready to return to the calling application.
+        self._readbuffer = b''
+        # The current position in _readbuffer for the next byte to return.
+        self._offset = 0
+        self._eof = False
+
+        self._decrypter = self.get_decrypter()
+        self._decompressor = self.get_decompressor(self._compress_type)
 
     def process_local_header(self):
         """Read the local header and raise for any errors.
@@ -1206,16 +1220,15 @@ class ZipExtFile(io.BufferedIOBase):
     def get_decrypter_cls(self):
         return CRCZipDecrypter
 
-    def get_decrypter(self, pwd):
+    def get_decrypter(self):
         # check for encrypted flag & handle password
         decrypter = None
         if self._zinfo.is_encrypted:
-            if not pwd:
+            if not self._pwd:
                 raise RuntimeError("File %r is encrypted, password "
                                    "required for extraction" % self.name)
 
-            decrypt_cls = self.get_decrypter_cls()
-            decrypter = decrypt_cls(self._fileobj, self._zinfo, pwd)
+            decrypter = self._decrypter_cls(self._fileobj, self._zinfo, self._pwd)
             # Adjust read size for encrypted files since the start of the file
             # may be used for the encryption/password information.
             self._compress_left -= decrypter.offset()
@@ -1418,13 +1431,13 @@ class ZipExtFile(io.BufferedIOBase):
         elif whence == 1: # Seek from current position
             new_pos = curr_pos + offset
         elif whence == 2: # Seek from EOF
-            new_pos = self._orig_file_size + offset
+            new_pos = self._zinfo.file_size + offset
         else:
             raise ValueError("whence must be os.SEEK_SET (0), "
                              "os.SEEK_CUR (1), or os.SEEK_END (2)")
 
-        if new_pos > self._orig_file_size:
-            new_pos = self._orig_file_size
+        if new_pos > self._zinfo.file_size:
+            new_pos = self._zinfo.file_size
 
         if new_pos < 0:
             new_pos = 0
@@ -1438,14 +1451,8 @@ class ZipExtFile(io.BufferedIOBase):
             read_offset = 0
         elif read_offset < 0:
             # Position is before the current position. Reset the ZipExtFile
-            self._fileobj.seek(self._orig_compress_start)
-            self._running_crc = self._orig_start_crc
-            self._compress_left = self._orig_compress_size
-            self._left = self._orig_file_size
-            self._readbuffer = b''
-            self._offset = 0
-            self._decompressor = self.get_decompressor(self._compress_type)
-            self._eof = False
+            self._fileobj.seek(self._compress_start)
+            self.read_init()
             read_offset = new_pos
 
         while read_offset > 0:
@@ -1458,7 +1465,7 @@ class ZipExtFile(io.BufferedIOBase):
     def tell(self):
         if not self._seekable:
             raise io.UnsupportedOperation("underlying stream is not seekable")
-        filepos = self._orig_file_size - self._left - len(self._readbuffer) + self._offset
+        filepos = self._zinfo.file_size - self._left - len(self._readbuffer) + self._offset
         return filepos
 
 
