@@ -434,11 +434,6 @@ class WZAESTests(unittest.TestCase):
                 fp.seek(0, os.SEEK_SET)
                 self.assertEqual(fp.tell(), 0)
 
-                fp.seek(0, os.SEEK_END)
-                fp._readbuffer = b''
-                fp.seek(0, os.SEEK_SET)
-                self.assertEqual(fp.read(5), txt[bloc:bloc+5])
-
                 # Read the file completely to definitely call any eof integrity
                 # checks (hmac/crc) and make sure they still pass.
                 fp.read()
