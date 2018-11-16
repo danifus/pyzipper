@@ -11,6 +11,7 @@ support.requires(
         'test requires loads of disk-space bytes and a long time to run'
     )
 
+import io
 import os, unittest
 import time
 import sys
@@ -77,6 +78,36 @@ class TestsWithSourceFile(unittest.TestCase):
             self.zipTest(f, zipfile.ZIP_STORED)
             self.assertFalse(f.closed)
         self.zipTest(TESTFN2, zipfile.ZIP_STORED)
+
+    def test_stream_one_big_file(self):
+
+        class FakeWriter:
+            """FakeWriter doesn't write anywhere real and is not seekable."""
+            def write(self, b):
+                return len(b)
+
+            def close(self):
+                pass
+
+            def flush(self):
+                return b''
+
+        with zipfile.ZipFile(FakeWriter(), 'w') as zf:
+            with zf.open('test.txt', 'w') as zfin:
+                written_mb = 0
+                write_size_mb = 4
+                required_atleast_mb = 2048
+                while written_mb < required_atleast_mb:
+                    zfin.write(b'0' * write_size_mb * 1024 * 1024)
+                    written_mb += write_size_mb
+
+                with self.assertRaises(RuntimeError):
+                    zfin.close()
+
+                # Because we aborted midway through writing a file, leaving the
+                # context will raise an error when trying to close the ZipFile.
+                # This is a bit of clean up so tests can continue.
+                zf._writing = False
 
     @requires_zlib
     def testDeflated(self):
