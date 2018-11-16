@@ -1539,6 +1539,8 @@ class _ZipWriteFile(io.BufferedIOBase):
         self._compress_size = 0
         self._crc = 0
 
+        self.write_local_header()
+
         if self._encrypter:
             self.write_encryption_header()
 
@@ -1548,6 +1550,14 @@ class _ZipWriteFile(io.BufferedIOBase):
 
     def writable(self):
         return True
+
+    def write_local_header(self):
+        header = self._zinfo.FileHeader(self._zip64)
+        # From this point onwards, we have likely altered the contents of the
+        # file.
+        self._zipfile._didModify = True
+        self._zipfile._writing = True
+        self._fileobj.write(header)
 
     def write_encryption_header(self):
         buf = self._encrypter.encryption_header()
@@ -2016,11 +2026,6 @@ class ZipFile:
         zinfo.header_offset = self.fp.tell()
 
         self._writecheck(zinfo)
-        self._didModify = True
-
-        self.fp.write(zinfo.FileHeader(zip64))
-
-        self._writing = True
         return self.zipwritefile_cls(self, zinfo, zip64, encrypter)
 
     def extract(self, member, path=None, pwd=None):
