@@ -1596,19 +1596,20 @@ class _ZipWriteFile(io.BufferedIOBase):
         self._zinfo.CRC = self._crc
         self._zinfo.file_size = self._file_size
 
+        if not self._zip64:
+            if self._file_size > ZIP64_LIMIT:
+                raise RuntimeError('File size unexpectedly exceeded ZIP64 '
+                                   'limit')
+            if self._compress_size > ZIP64_LIMIT:
+                raise RuntimeError('Compressed size unexpectedly exceeded '
+                                   'ZIP64 limit')
+
         # Write updated header info
         if self._zinfo.use_datadescripter:
             # Write CRC and file sizes after the file data
             self._fileobj.write(self._zinfo.datadescripter(self._zip64))
             self._zipfile.start_dir = self._fileobj.tell()
         else:
-            if not self._zip64:
-                if self._file_size > ZIP64_LIMIT:
-                    raise RuntimeError('File size unexpectedly exceeded ZIP64 '
-                                       'limit')
-                if self._compress_size > ZIP64_LIMIT:
-                    raise RuntimeError('Compressed size unexpectedly exceeded '
-                                       'ZIP64 limit')
             # Seek backwards and write file header (which will now include
             # correct CRC and file sizes)
 
