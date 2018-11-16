@@ -1539,12 +1539,20 @@ class _ZipWriteFile(io.BufferedIOBase):
         self._compress_size = 0
         self._crc = 0
 
+        if self._encrypter:
+            self.write_encryption_header()
+
     @property
     def _fileobj(self):
         return self._zipfile.fp
 
     def writable(self):
         return True
+
+    def write_encryption_header(self):
+        buf = self._encrypter.encryption_header()
+        self._compress_size += len(buf)
+        self._fileobj.write(buf)
 
     def write(self, data):
         if self.closed:

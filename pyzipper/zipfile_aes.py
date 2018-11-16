@@ -91,11 +91,19 @@ class BaseZipEncrypter:
             'BaseZipEncrypter implementations must implement `encrypt`.'
         )
 
+    def encryption_header(self):
+        raise NotImplementedError(
+            'BaseZipEncrypter implementations must implement '
+            '`encryption_header`.'
+        )
+
     def flush(self):
         return b''
 
 
 class AESZipEncrypter(BaseZipEncrypter):
+
+    hmac_size = 10
 
     def __init__(self, pwd, nbits=256, force_wz_aes_version=None):
         if not pwd:
@@ -109,7 +117,6 @@ class AESZipEncrypter(BaseZipEncrypter):
             )
 
         self.force_wz_aes_version = force_wz_aes_version
-        self.has_written_salt = False
         salt_lengths = {
             128: 8,
             192: 12,
@@ -151,19 +158,16 @@ class AESZipEncrypter(BaseZipEncrypter):
         if self.force_wz_aes_version is not None:
             zipinfo.wz_aes_version = self.force_wz_aes_version
 
+    def encryption_header(self):
+        return self.salt + self.encpwdverify
+
     def encrypt(self, data):
         data = self.encrypter.encrypt(data)
         self.hmac.update(data)
-        if not self.has_written_salt:
-            self.has_written_salt = True
-            return self.salt + self.encpwdverify + data
         return data
 
     def flush(self):
-        out = b''
-        if not self.has_written_salt:
-            out = self.salt + self.encpwdverify
-        return out + struct.pack('<10s', self.hmac.digest()[:10])
+        return struct.pack('<%ds' % self.hmac_size, self.hmac.digest()[:10])
 
 
 class AESZipInfo(ZipInfo):
