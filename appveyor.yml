@@ -74,4 +74,5 @@ on_finish:
   - C:\cygwin\bin\find "C:\projects\pyzipper\.tox" -empty -delete
   # Show size of cache
   - C:\cygwin\bin\du -hs "%LOCALAPPDATA%\pip\Cache"
-- C:\cygwin\bin\du -hs "C:\projects\pyzipper\.tox"
+  - C:\cygwin\bin\du -hs "C:\projects\pyzipper\.tox"
+  -
