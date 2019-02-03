@@ -15,6 +15,10 @@
         :target: https://ci.appveyor.com/project/danifus/pyzipper/branch/master
         :alt: AppVeyor build (Windows)
 
+.. image:: https://readthedocs.org/projects/pyzipper/badge/?version=latest
+        :target: https://pyzipper.readthedocs.io/en/latest/?badge=latest
+        :alt: Documentation Status
+
 .. image:: https://coveralls.io/repos/github/danifus/pyzipper/badge.svg?branch=master
         :target: https://coveralls.io/github/danifus/pyzipper?branch=master
         :alt: Code Coverage
@@ -77,3 +81,12 @@ encryption kwargs:
    with pyzipper.AESZipFile('new_test.zip') as zf:
        zf.pwd = secret_password
        my_secrets = zf.read('test.txt')
+
+
+Credits
+-------
+
+The docs skeleton was created with Cookiecutter_ and the `audreyr/cookiecutter-pypackage`_ project template.
+
+.. _Cookiecutter: https://github.com/audreyr/cookiecutter
+.. _`audreyr/cookiecutter-pypackage`: https://github.com/audreyr/cookiecutter-pypackage

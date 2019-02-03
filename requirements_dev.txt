@@ -3,6 +3,11 @@ bumpversion>=0.5.3
 twine>=1.12.1
 wheel>=0.32.1
 
+# documentation dependencies
+Sphinx>=1.8.1
+sphinx-rtd-theme>=0.3.1
+
+# testing dependencies
 flake8>=3.5.0
 tox>=3.5.2
 pytest>=4.0.0

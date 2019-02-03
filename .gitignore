@@ -9,5 +9,9 @@ pyzipper.egg-info
 .coverage.*
 @test*
 
+# auto generated doc files
+docs/api/
+docs/_build
+
 # Pycharm project files
 .idea/
