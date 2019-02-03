@@ -1,11 +1,11 @@
 import struct
 
-from Crypto.Protocol.KDF import PBKDF2
-from Crypto.Cipher import AES
-from Crypto.Hash import HMAC
-from Crypto.Hash.SHA import SHA1Hash
-from Crypto.Util import Counter
-from Crypto import Random
+from Cryptodome.Protocol.KDF import PBKDF2
+from Cryptodome.Cipher import AES
+from Cryptodome.Hash import HMAC
+from Cryptodome.Hash.SHA1 import SHA1Hash
+from Cryptodome.Util import Counter
+from Cryptodome import Random
 
 from .zipfile import (
     ZIP_BZIP2, BadZipFile, BaseZipDecrypter, ZipFile, ZipInfo, ZipExtFile,
