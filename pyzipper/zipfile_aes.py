@@ -9,7 +9,6 @@ from Cryptodome import Random
 
 from .zipfile import (
     ZIP_BZIP2, BadZipFile, BaseZipDecrypter, ZipFile, ZipInfo, ZipExtFile,
-    crc32,
 )
 
 WZ_AES = 'WZ_AES'
