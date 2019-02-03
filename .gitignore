@@ -5,6 +5,9 @@ pyzipper.egg-info
 *.swp
 *.egg
 .tox/
+.coverage
+.coverage.*
+@test*
 
 # Pycharm project files
 .idea/
