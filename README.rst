@@ -1,3 +1,7 @@
+.. image:: https://img.shields.io/travis/danifus/pyzipper.svg
+        :target: https://travis-ci.org/danifus/pyzipper
+        :alt: Travis build
+
 pyzipper
 ========
 
