@@ -9,10 +9,19 @@ if "%SPHINXBUILD%" == "" (
 )
 set SOURCEDIR=.
 set BUILDDIR=_build
+set API_TOCTREE_DIR=api
 set SPHINXPROJ=pyzipper
 set SPHINXOPTS=-W
 
 if "%1" == "" goto help
+
+if "%1" == "clean_all" (
+	for /d %%i in (%BUILDDIR%\*) do rmdir /q /s %%i
+	del /q /s %BUILDDIR%\*
+	for /d %%i in (%API_TOCTREE_DIR%\*) do rmdir /q /s %%i
+	del /q /s %API_TOCTREE_DIR%\*
+	goto end
+)
 
 %SPHINXBUILD% >NUL 2>NUL
 if errorlevel 9009 (
@@ -29,6 +38,7 @@ if errorlevel 9009 (
 
 %SPHINXBUILD% -M %1 %SOURCEDIR% %BUILDDIR% %SPHINXOPTS%
 goto end
+
 
 :help
 %SPHINXBUILD% -M help %SOURCEDIR% %BUILDDIR% %SPHINXOPTS%
