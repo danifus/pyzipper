@@ -1,5 +1,5 @@
 .. image:: https://img.shields.io/pypi/v/pyzipper.svg
-        :target: https://pypi.python.org/pypi/pyzipper
+        :target: https://pypi.org/project/pyzipper/
         :alt: Current Version on PyPi
 
 .. image:: https://img.shields.io/pypi/pyversions/pyzipper.svg
