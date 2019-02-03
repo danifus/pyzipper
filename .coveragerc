@@ -1,7 +1,7 @@
 [run]
 branch = True
 include = pyzipper/*
-#          tests/*
+#          test/*
 # uncomment the above line if you want to see if all tests did run
 omit = setup.py
        pyzipper\__version__.py
