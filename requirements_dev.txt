@@ -1,0 +1,10 @@
+pip>=18.1
+bumpversion>=0.5.3
+twine>=1.12.1
+wheel>=0.32.1
+
+flake8>=3.5.0
+tox>=3.5.2
+pytest>=4.0.0
+pytest-cov>=2.5.1
+coverage>=4.5.1
