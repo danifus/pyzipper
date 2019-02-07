@@ -45,7 +45,7 @@ class RegressionTestResult(unittest.TextTestResult):
         self.__e = e = ET.SubElement(self.__suite, 'testcase')
         self.__start_time = time.perf_counter()
         if self.__verbose:
-            self.stream.write(f'{self.getDescription(test)} ... ')
+            self.stream.write('{} ... '.format(self.getDescription(test)))
             self.stream.flush()
 
     def _add_result(self, test, capture=False, **args):
@@ -57,7 +57,7 @@ class RegressionTestResult(unittest.TextTestResult):
         e.set('status', args.pop('status', 'run'))
         e.set('result', args.pop('result', 'completed'))
         if self.__start_time:
-            e.set('time', f'{time.perf_counter() - self.__start_time:0.6f}')
+            e.set('time', '{:0.6f}'.format(time.perf_counter() - self.__start_time))
 
         if capture:
             stdout = self._stdout_buffer.getvalue().rstrip()
@@ -80,7 +80,7 @@ class RegressionTestResult(unittest.TextTestResult):
 
     def __write(self, c, word):
         if self.__verbose:
-            self.stream.write(f'{word}\n')
+            self.stream.write('{}\n'.format(word))
 
     @classmethod
     def __makeErrorDict(cls, err_type, err_value, err_tb):
@@ -88,7 +88,7 @@ class RegressionTestResult(unittest.TextTestResult):
             if err_type.__module__ == 'builtins':
                 typename = err_type.__name__
             else:
-                typename = f'{err_type.__module__}.{err_type.__name__}'
+                typename = '{}.{}'.format(err_type.__module__, err_type.__name__)
         else:
             typename = repr(err_type)
 
@@ -119,7 +119,7 @@ class RegressionTestResult(unittest.TextTestResult):
     def addSkip(self, test, reason):
         self._add_result(test, skipped=reason)
         super().addSkip(test, reason)
-        self.__write('S', f'skipped {reason!r}')
+        self.__write('S', 'skipped {!r}'.format(reason))
 
     def addSuccess(self, test):
         self._add_result(test)
@@ -140,9 +140,9 @@ class RegressionTestResult(unittest.TextTestResult):
     def printErrorList(self, flavor, errors):
         for test, err in errors:
             self.stream.write(self.separator1)
-            self.stream.write(f'{flavor}: {self.getDescription(test)}\n')
+            self.stream.write('{}: {}\n'.format(flavor, self.getDescription(test)))
             self.stream.write(self.separator2)
-            self.stream.write('%s\n' % err)
+            self.stream.write('{}\n'.format(err))
 
     def get_xml_element(self):
         e = self.__suite

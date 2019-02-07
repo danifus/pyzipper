@@ -1,6 +1,7 @@
 import contextlib
 import io
 import os
+import sys
 import importlib.util
 import pathlib
 import posixpath
@@ -1066,6 +1067,9 @@ class ExtractTests(unittest.TestCase):
         with zipfile.ZipFile(TESTFN2, "r") as zipfp:
             for fpath, fdata in SMALL_TEST_DATA:
                 writtenfile = zipfp.extract(fpath, target)
+                # compat with Path objects were added in python 3.6
+                if sys.version_info[0:2] < (3, 6):
+                    target = str(target)
 
                 # make sure it was written to the right place
                 correctfile = os.path.join(target, fpath)
@@ -1106,7 +1110,10 @@ class ExtractTests(unittest.TestCase):
         with zipfile.ZipFile(TESTFN2, "r") as zipfp:
             zipfp.extractall(target)
             for fpath, fdata in SMALL_TEST_DATA:
-                outfile = os.path.join(target, fpath)
+                # compat with Path objects were added in python 3.6
+                if sys.version_info[0:2] < (3, 6):
+                    target = str(target)
+                outfile = os.path.join(str(target), fpath)
 
                 with open(outfile, "rb") as f:
                     self.assertEqual(fdata.encode(), f.read())

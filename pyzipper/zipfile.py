@@ -14,6 +14,9 @@ import struct
 import binascii
 import threading
 
+if sys.version_info[0:2] < (3, 6):
+    import pathlib
+
 try:
     import zlib # We may need its compression method
     crc32 = zlib.crc32
@@ -224,6 +227,9 @@ def is_zipfile(filename):
         if hasattr(filename, "read"):
             result = _check_zipfile(fp=filename)
         else:
+            # compat with Path objects were added in python 3.6
+            if sys.version_info[0:2] < (3, 6):
+                filename = str(filename)
             with open(filename, "rb") as fp:
                 result = _check_zipfile(fp)
     except OSError:
@@ -786,8 +792,14 @@ class ZipInfo (object):
         this will be the same as filename, but without a drive letter and with
         leading path separators removed).
         """
-        if isinstance(filename, os.PathLike):
-            filename = os.fspath(filename)
+
+        # os.PathLike and os.fspath were added in python 3.6
+        if sys.version_info[0:2] >= (3, 6):
+            if isinstance(filename, os.PathLike):
+                filename = os.fspath(filename)
+        else:
+            if isinstance(filename, pathlib.PurePath):
+                filename = str(filename)
         st = os.stat(filename)
         isdir = stat.S_ISDIR(st.st_mode)
         mtime = time.localtime(st.st_mtime)
@@ -1678,8 +1690,13 @@ class ZipFile:
         self._strict_timestamps = strict_timestamps
 
         # Check if we were passed a file-like object
-        if isinstance(file, os.PathLike):
-            file = os.fspath(file)
+        # os.PathLike and os.fspath were added in python 3.6
+        if sys.version_info[0:2] >= (3, 6):
+            if isinstance(file, os.PathLike):
+                file = os.fspath(file)
+        else:
+            if isinstance(file, pathlib.PurePath):
+                file = str(file)
         if isinstance(file, str):
             # No, it's a filename
             self._filePassed = 0
@@ -2038,7 +2055,11 @@ class ZipFile:
         if path is None:
             path = os.getcwd()
         else:
-            path = os.fspath(path)
+            # os.fspath were added in python 3.6
+            if sys.version_info[0:2] >= (3, 6):
+                path = os.fspath(path)
+            else:
+                path = str(path)
 
         return self._extract_member(member, path, pwd)
 
@@ -2054,7 +2075,11 @@ class ZipFile:
         if path is None:
             path = os.getcwd()
         else:
-            path = os.fspath(path)
+            # os.fspath were added in python 3.6
+            if sys.version_info[0:2] >= (3, 6):
+                path = os.fspath(path)
+            else:
+                path = str(path)
 
         for zipinfo in members:
             self._extract_member(zipinfo, path, pwd)
@@ -2332,7 +2357,11 @@ class PyZipFile(ZipFile):
         If filterfunc(pathname) is given, it is called with every argument.
         When it is False, the file or directory is skipped.
         """
-        pathname = os.fspath(pathname)
+        # os.fspath were added in python 3.6
+        if sys.version_info[0:2] >= (3, 6):
+            pathname = os.fspath(pathname)
+        else:
+            pathname = str(pathname)
         if filterfunc and not filterfunc(pathname):
             if self.debug:
                 label = 'path' if os.path.isdir(pathname) else 'file'
