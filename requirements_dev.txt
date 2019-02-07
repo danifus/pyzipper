@@ -3,6 +3,9 @@ bumpversion>=0.5.3
 twine>=1.12.1
 wheel>=0.32.1
 
+# fixed version of pycryptodomex so pyup bot can send PR's on updates
+pycryptodomex==3.7.3
+
 # documentation dependencies
 Sphinx>=1.8.1
 sphinx-rtd-theme>=0.3.1

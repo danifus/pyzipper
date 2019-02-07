@@ -19,6 +19,10 @@
         :target: https://pyzipper.readthedocs.io/en/latest/?badge=latest
         :alt: Documentation Status
 
+.. image:: https://pyup.io/repos/github/danifus/pyzipper/shield.svg
+        :target: https://pyup.io/repos/github/danifus/pyzipper
+        :alt: Updates
+
 .. image:: https://coveralls.io/repos/github/danifus/pyzipper/badge.svg?branch=master
         :target: https://coveralls.io/github/danifus/pyzipper?branch=master
         :alt: Code Coverage

@@ -17,7 +17,7 @@ DESCRIPTION = 'AES encryption for zipfile.'
 URL = 'https://github.com/danifus/pyzipper'
 EMAIL = 'daniel.hillier@gmail.com'
 AUTHOR = 'Daniel Hillier'
-REQUIRES_PYTHON = '>=3.3'
+REQUIRES_PYTHON = '>=3.6'
 VERSION = None
 
 # What packages are required for this module to be executed?
