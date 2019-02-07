@@ -374,6 +374,51 @@ class WZAESTests(unittest.TestCase):
         self.assertEqual(wz_aes_strength, 1)
         self.assertEqual(content, read_content)
 
+    def test_local_header(self):
+        """Local file header contains correct WZ AES information."""
+        fname = TESTFN
+        pwd = b'passwd'
+        content_fname = 'test.txt'
+        content = b'content'
+        with zipfile_aes.AESZipFile(
+                fname,
+                'w',
+                encryption=zipfile_aes.WZ_AES
+        ) as zipfp:
+            zipfp.setpassword(pwd)
+            zipfp.writestr(content_fname, content)
+
+        with zipfile_aes.AESZipFile(fname) as zipfp:
+            zipfp.setpassword(pwd)
+            with zipfp.open(zipfp.NameToInfo[content_fname]) as zf:
+                zf._fileobj.seek(0)
+                fheader = zf._fileobj.read(zipfile.sizeFileHeader)
+                fheader = struct.unpack(zipfile.structFileHeader, fheader)
+
+                # local header record
+                self.assertEqual(fheader[4], zipfile_aes.WZ_AES_COMPRESS_TYPE)
+
+                # extra info record
+                fname_len = fheader[-2]
+                extra_len = fheader[-1]
+                zf._fileobj.read(fname_len)
+                extra = zf._fileobj.read(extra_len)
+                records = []
+                # Iterate through any extra records which may be present.
+                while len(extra) >= 4:
+                    tp, ln = struct.unpack('<HH', extra[:4])
+                    if tp == zipfile_aes.EXTRA_WZ_AES:
+                        records.append(extra[4:ln+4])
+                    extra = extra[ln+4:]
+                # The WZ extra record only appears once.
+                self.assertEqual(len(records), 1)
+                counts = struct.unpack("<H2sBH", records[0])
+                # The local header and central directory extra are the same.
+                self.assertEqual(zf._zinfo.wz_aes_version, counts[0])
+                self.assertEqual(zf._zinfo.wz_aes_vendor_id, counts[1])
+                self.assertEqual(zf._zinfo.wz_aes_strength, counts[2])
+                self.assertEqual(zf._zinfo.compress_type, counts[3])
+
     def test_seek_tell(self):
         # Test seek functionality
         txt = b"Where's Bruce?"

@@ -246,10 +246,10 @@ class AESZipInfo(ZipInfo):
             )
         return wz_aes_extra, crc, compress_type
 
-    def encode_local_directory(self, *, crc, compress_type, extra, **kwargs):
+    def encode_local_header(self, *, crc, compress_type, extra, **kwargs):
         wz_aes_extra, crc, compress_type = self.encode_extra(
             crc, compress_type)
-        return super().encode_local_directory(
+        return super().encode_local_header(
             crc=crc,
             compress_type=compress_type,
             extra=extra+wz_aes_extra,
