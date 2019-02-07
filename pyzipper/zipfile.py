@@ -649,7 +649,7 @@ class ZipInfo (object):
             print((structCentralDir, stringCentralDir, create_version,
                    create_system, extract_version, reserved,
                    flag_bits, compress_type, dostime, dosdate,
-                   CRC, compress_size, file_size,
+                   crc, compress_size, file_size,
                    len(filename), len(extra_data), len(comment),
                    disk_start, internal_attr, external_attr,
                    header_offset), file=sys.stderr)
