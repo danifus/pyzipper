@@ -17,12 +17,12 @@ DESCRIPTION = 'AES encryption for zipfile.'
 URL = 'https://github.com/danifus/pyzipper'
 EMAIL = 'daniel.hillier@gmail.com'
 AUTHOR = 'Daniel Hillier'
-REQUIRES_PYTHON = '>=3.3'
+REQUIRES_PYTHON = '>=3.6'
 VERSION = None
 
 # What packages are required for this module to be executed?
 REQUIRED = [
-    'pycrypto',
+    'pycryptodomex',
 ]
 
 # The rest you shouldn't have to touch too much :)
@@ -91,6 +91,7 @@ setup(
     long_description=long_description,
     author=AUTHOR,
     author_email=EMAIL,
+    keywords="zip aes encrypt decrypt",
     python_requires=REQUIRES_PYTHON,
     url=URL,
     packages=find_packages(exclude=('tests', 'docs')),
@@ -101,10 +102,16 @@ setup(
         'Development Status :: 4 - Beta',
         'Topic :: System :: Archiving :: Compression',
         'Intended Audience :: Developers',
+        'Operating System :: MacOS :: MacOS X',
+        'Operating System :: Microsoft :: Windows',
+        'Operating System :: POSIX :: Linux',
+        'Operating System :: POSIX',
         'License :: OSI Approved :: MIT License',
         'Operating System :: OS Independent',
         'Programming Language :: Python',
         'Programming Language :: Python :: 3',
+        'Programming Language :: Python :: 3.6',
+        'Programming Language :: Python :: 3.7',
     ],
     # $ setup.py publish support.
     cmdclass={

@@ -5,3 +5,13 @@ pyzipper.egg-info
 *.swp
 *.egg
 .tox/
+.coverage
+.coverage.*
+@test*
+
+# auto generated doc files
+docs/api/
+docs/_build
+
+# Pycharm project files
+.idea/

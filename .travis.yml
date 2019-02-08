@@ -1,0 +1,99 @@
+# Config file for automatic testing at travis-ci.org
+
+language: python
+
+# Command to install dependencies, e.g. pip install -r requirements.txt --use-mirrors
+install: pip install -U tox coveralls
+
+matrix:
+  fast_finish: true
+  include:
+    - python: 3.6
+      env: TOXENV=flake8
+      after_success:
+        - echo "done"
+
+    - python: 3.6
+      #taken from https://quick-sphinx-tutorial.readthedocs.io/en/latest/advanced.html
+      env: test-doc-creation
+      sudo: false
+      install:
+        - python -m pip install -U -r requirements_dev.txt
+        - python setup.py install
+      script:
+        - cd docs; make html
+      after_success:
+        - echo "done"
+
+    - python: 3.6
+      #taken from https://quick-sphinx-tutorial.readthedocs.io/en/latest/advanced.html
+      env: test-doc-links
+      sudo: false
+      install:
+      - python -m pip install -U -r requirements_dev.txt
+      - python setup.py install
+      script:
+      - cd docs; make linkcheck
+      after_success:
+      - echo "done"
+
+    - python: 3.6
+      env: TOXENV=py36
+
+    - language: python
+      sudo: required
+      dist: xenial
+      python: "3.7"
+      env: TOXENV=py37
+
+    - language: generic
+      python: 3.6
+      env: osx-py36
+      os: osx
+      before_install:
+        - wget https://repo.continuum.io/miniconda/Miniconda3-latest-MacOSX-x86_64.sh -O miniconda.sh;
+        - bash miniconda.sh -b -p $HOME/miniconda
+        - export PATH="$HOME/miniconda/bin:$PATH"
+        - conda update conda -y
+        - conda create -n py36 python=3.6 -y
+      install:
+        - source activate py36
+        - conda config --add channels conda-forge
+        - conda install -y --name py36 tox coveralls
+        - pip freeze
+      script: tox -e py36
+
+    - language: generic
+      python: 3.7
+      env: osx-py37
+      os: osx
+      before_install:
+        - wget https://repo.continuum.io/miniconda/Miniconda3-latest-MacOSX-x86_64.sh -O miniconda.sh;
+        - bash miniconda.sh -b -p $HOME/miniconda
+        - export PATH="$HOME/miniconda/bin:$PATH"
+        - conda update conda -y
+        - conda create -n py37 python=3.7 -y
+      install:
+        - source activate py37
+        - conda config --add channels conda-forge
+        - conda install -y --name py37 tox coveralls
+        - pip freeze
+      script: tox -e py37
+
+
+    - python: 3.6
+      env: win-coverage
+      install:
+        - pip install git+https://github.com/Robpol86/appveyor-artifacts.git coveralls
+      script:
+        - appveyor-artifacts -m download
+
+  allow_failures:
+    #      this test is allowed to fail since it uses external resources
+    - env: test-doc-links
+
+script: tox
+
+after_success:
+  - coveralls
+  - coverage erase

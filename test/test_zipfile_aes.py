@@ -18,11 +18,11 @@ FIXEDTEST_SIZE = 1000
 
 
 try:
-    import Crypto
+    import Cryptodome
 except ImportError:
-    Crypto = None
+    Cryptodome = None
 
-requires_pycrypto = unittest.skipUnless(Crypto, 'requires pycrypto')
+requires_pycrypto = unittest.skipUnless(Cryptodome, 'requires pycryptodomex')
 
 
 @requires_pycrypto
