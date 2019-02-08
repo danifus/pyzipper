@@ -163,8 +163,8 @@ class TestSupport(unittest.TestCase):
 
         self.assertEqual(len(warnings), 1, warnings)
         warn = warnings[0]
-        self.assertTrue(warn.startswith(f'tests may fail, unable to create '
-                                        f'temporary directory {path!r}: '),
+        self.assertTrue(warn.startswith('tests may fail, unable to create '
+                                        'temporary directory {!r}: '.format(path)),
                         warn)
 
     @unittest.skipUnless(hasattr(os, "fork"), "test requires os.fork")
@@ -235,9 +235,9 @@ class TestSupport(unittest.TestCase):
 
         self.assertEqual(len(warnings), 1, warnings)
         warn = warnings[0]
-        self.assertTrue(warn.startswith(f'tests may fail, unable to change '
-                                        f'the current working directory '
-                                        f'to {bad_dir!r}: '),
+        self.assertTrue(warn.startswith('tests may fail, unable to change '
+                                        'the current working directory '
+                                        'to {!r}: '.format(bad_dir)),
                         warn)
 
     # Tests for change_cwd()
@@ -252,9 +252,9 @@ class TestSupport(unittest.TestCase):
 
         self.assertEqual(len(messages), 1, messages)
         msg = messages[0]
-        self.assertTrue(msg.startswith(f'tests may fail, unable to change '
-                                       f'the current working directory '
-                                       f'to {path!r}: '),
+        self.assertTrue(msg.startswith('tests may fail, unable to change '
+                                       'the current working directory '
+                                       'to {!r}: '.format(path)),
                         msg)
 
     # Tests for temp_cwd()
@@ -457,7 +457,7 @@ class TestSupport(unittest.TestCase):
         support.reap_children()
 
     def check_options(self, args, func):
-        code = f'from test.support import {func}; print(repr({func}()))'
+        code = 'from test.support import {}; print(repr({}()))'.format(func, func)
         cmd = [sys.executable, *args, '-c', code]
         env = {key: value for key, value in os.environ.items()
                if not key.startswith('PYTHON')}

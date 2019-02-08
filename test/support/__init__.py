@@ -377,7 +377,7 @@ if sys.platform.startswith("win"):
                 try:
                     mode = os.lstat(fullname).st_mode
                 except OSError as exc:
-                    print("support.rmtree(): os.lstat(%r) failed with %s" % (fullname, exc),
+                    print("support.rmtree(): os.lstat({!r}) failed with {}".format(fullname, exc),
                           file=sys.__stderr__)
                     mode = 0
                 if stat.S_ISDIR(mode):
@@ -589,8 +589,9 @@ def _requires_unix_version(sysname, min_version):
                     if version < min_version:
                         min_version_txt = '.'.join(map(str, min_version))
                         raise unittest.SkipTest(
-                            "%s version %s or higher required, not %s"
-                            % (sysname, min_version_txt, version_txt))
+                            "{} version {} or higher required, not {}".format(sysname,
+                                                                              min_version_txt,
+                                                                              version_txt))
             return func(*args, **kw)
         wrapper.min_version = min_version
         return wrapper
@@ -727,12 +728,12 @@ def bind_port(sock, host=HOST):
     if sock.family == socket.AF_INET and sock.type == socket.SOCK_STREAM:
         if hasattr(socket, 'SO_REUSEADDR'):
             if sock.getsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR) == 1:
-                raise TestFailed("tests should never set the SO_REUSEADDR "   \
+                raise TestFailed("tests should never set the SO_REUSEADDR "
                                  "socket option on TCP/IP sockets!")
         if hasattr(socket, 'SO_REUSEPORT'):
             try:
                 if sock.getsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT) == 1:
-                    raise TestFailed("tests should never set the SO_REUSEPORT "   \
+                    raise TestFailed("tests should never set the SO_REUSEPORT "
                                      "socket option on TCP/IP sockets!")
             except OSError:
                 # Python's socket module was compiled using modern headers
@@ -987,8 +988,8 @@ def temp_dir(path=None, quiet=False):
         except OSError as exc:
             if not quiet:
                 raise
-            warnings.warn(f'tests may fail, unable to create '
-                          f'temporary directory {path!r}: {exc}',
+            warnings.warn('tests may fail, unable to create '
+                          'temporary directory {!r}: {}'.format(path, exc),
                           RuntimeWarning, stacklevel=3)
     if dir_created:
         pid = os.getpid()
@@ -1019,8 +1020,8 @@ def change_cwd(path, quiet=False):
     except OSError as exc:
         if not quiet:
             raise
-        warnings.warn(f'tests may fail, unable to change the current working '
-                      f'directory to {path!r}: {exc}',
+        warnings.warn('tests may fail, unable to change the current working '
+                      'directory to {!r}: {}'.format(path, exc),
                       RuntimeWarning, stacklevel=3)
     try:
         yield os.getcwd()
@@ -2134,7 +2135,7 @@ def threading_cleanup(*original_values):
                      values[0], len(dangling_threads)),
                   file=sys.stderr)
             for thread in dangling_threads:
-                print(f"Dangling thread: {thread!r}", file=sys.stderr)
+                print("Dangling thread: {!r}".format(thread), file=sys.stderr)
             sys.stderr.flush()
 
             # Don't hold references to threads
@@ -2186,9 +2187,10 @@ def wait_threads_exit(timeout=60.0):
                 break
             if time.monotonic() > deadline:
                 dt = time.monotonic() - start_time
-                msg = (f"wait_threads() failed to cleanup {count - old_count} "
-                       f"threads after {dt:.1f} seconds "
-                       f"(count: {count}, old count: {old_count})")
+                msg = ("wait_threads() failed to cleanup {} "
+                       "threads after {:.1f} seconds "
+                       "(count: {}, old count: {})".format(count - old_count,
+                                                           dt, count, old_count))
                 raise AssertionError(msg)
             time.sleep(0.010)
             gc_collect()
@@ -2200,7 +2202,7 @@ def join_thread(thread, timeout=30.0):
     """
     thread.join(timeout)
     if thread.is_alive():
-        msg = f"failed to join the thread in {timeout:.1f} seconds"
+        msg = "failed to join the thread in {:.1f} seconds".format(timeout)
         raise AssertionError(msg)
 
 
@@ -2923,7 +2925,7 @@ class FakePath:
         self.path = path
 
     def __repr__(self):
-        return f'<FakePath {self.path!r}>'
+        return '<FakePath {!r}>'.format(self.path)
 
     def __fspath__(self):
         if (isinstance(self.path, BaseException) or
