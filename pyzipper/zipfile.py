@@ -2349,6 +2349,11 @@ class PyZipFile(ZipFile):
 
     def __init__(self, file, mode="r", compression=ZIP_STORED,
                  allowZip64=True, optimize=-1):
+
+        if sys.version_info[0:2] < (3, 5):
+            raise NotImplementedError(
+                "pyzipper.PyZipFile doesn't work for versions less than 3.5"
+            )
         ZipFile.__init__(self, file, mode=mode, compression=compression,
                          allowZip64=allowZip64)
         self._optimize = optimize

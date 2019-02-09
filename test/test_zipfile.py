@@ -843,6 +843,7 @@ class LzmaWriterTests(AbstractWriterTests, unittest.TestCase):
     compression = zipfile.ZIP_LZMA
 
 
+@unittest.skipIf(sys.version_info[0:2] < (3, 5), 'Requires Python >= 3.5')
 class PyZipFileTests(unittest.TestCase):
     def assertCompiledIn(self, name, namelist):
         if name + 'o' not in namelist:
