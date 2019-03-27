@@ -14,7 +14,7 @@
 pyzipper
 ========
 
-Modification of Python's ``zipfile`` to read and write AES encrypted zip files.
+A 100% API compatible replacement for Python's ``zipfile`` that can read and write AES encrypted zip files.
 
 Installation
 ------------
@@ -37,11 +37,11 @@ Usage
                             'w',
                             compression=pyzipper.ZIP_LZMA,
                             encryption=pyzipper.WZ_AES) as zf:
-       zf.pwd = secret_password
+       zf.setpassword(secret_password)
        zf.writestr('test.txt', "What ever you do, don't tell anyone!")
 
    with pyzipper.AESZipFile('new_test.zip') as zf:
-       zf.pwd = secret_password
+       zf.setpassword(secret_password)
        my_secrets = zf.read('test.txt')
 
 
@@ -61,14 +61,18 @@ encryption kwargs:
    with pyzipper.AESZipFile('new_test.zip',
                             'w',
                             compression=pyzipper.ZIP_LZMA) as zf:
-       zf.pwd = secret_password
+       zf.setpassword(secret_password)
        zf.setencryption(pyzipper.WZ_AES, nbits=128)
        zf.writestr('test.txt', "What ever you do, don't tell anyone!")
 
    with pyzipper.AESZipFile('new_test.zip') as zf:
-       zf.pwd = secret_password
+       zf.setpassword(secret_password)
        my_secrets = zf.read('test.txt')
 
+Documentation
+-------------
+
+Official Python ZipFile documentation is available here: https://docs.python.org/3/library/zipfile.html
 
 Credits
 -------
