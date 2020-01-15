@@ -1970,14 +1970,14 @@ class ZipFile:
         """
         if mode not in {"r", "w"}:
             raise ValueError('open() requires mode "r" or "w"')
-        if pwd and not isinstance(pwd, bytes):
-            raise TypeError("pwd: expected bytes, got %s" % type(pwd).__name__)
         if not self.fp:
             raise ValueError(
                 "Attempt to use ZIP archive that was already closed")
 
         if not pwd:
             pwd = self.pwd
+        if pwd and not isinstance(pwd, bytes):
+            raise TypeError("pwd: expected bytes, got %s" % type(pwd).__name__)
 
         # Make sure we have an info object
         if isinstance(name, self.zipinfo_cls):
