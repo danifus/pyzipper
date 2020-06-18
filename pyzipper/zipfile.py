@@ -735,9 +735,9 @@ class ZipInfo (object):
         elif ln in {4, 12, 20, 28}:
             q_field_cnt = (ln - 4) / 8
             if q_field_cnt == 0:
-                struct_str = '<%dQH' % (q_field_cnt, )
+                struct_str = '<I'
             else:
-                struct_str = '<QH'
+                struct_str = '<%dQI' % (q_field_cnt, )
             counts = struct.unpack(struct_str, extra[offset:offset+ln])
         else:
             raise BadZipFile(
@@ -759,7 +759,7 @@ class ZipInfo (object):
                 zip64_field_cnt += 1
 
             # For completeness - The spec defines a way for handling a larger
-            # number of disks than can fit into 4 bytes. As zipfile currently
+            # number of disks than can fit into 2 bytes. As zipfile currently
             # doesn't support multiple disks we don't do anything with this
             # field.
             # if self.diskno == 0xffff:
