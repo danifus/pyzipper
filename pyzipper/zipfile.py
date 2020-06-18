@@ -739,32 +739,43 @@ class ZipInfo (object):
             else:
                 struct_str = '<%dQI' % (q_field_cnt, )
             counts = struct.unpack(struct_str, extra[offset:offset+ln])
+
         else:
             raise BadZipFile(
-                "Corrupt extra field %04x (size=%d)" % (EXTRA_ZIP64, ln))
+                "Corrupt extra field %04x (size=%d)" % (EXTRA_ZIP64, ln)
+            )
 
         zip64_field_cnt = 0
         # ZIP64 extension (large files and/or large archives)
-        if self.file_size in (0xffffffffffffffff, 0xffffffff):
-            self.file_size = counts[zip64_field_cnt]
-            zip64_field_cnt += 1
-
-        if self.compress_size == 0xffffffff:
-            self.compress_size = counts[zip64_field_cnt]
-            zip64_field_cnt += 1
-
-        if is_central_directory:
-            if self.header_offset == 0xffffffff:
-                self.header_offset = counts[zip64_field_cnt]
+        try:
+            if self.file_size in (0xffffffffffffffff, 0xffffffff):
+                field = "File size"
+                self.file_size = counts[zip64_field_cnt]
                 zip64_field_cnt += 1
 
-            # For completeness - The spec defines a way for handling a larger
-            # number of disks than can fit into 2 bytes. As zipfile currently
-            # doesn't support multiple disks we don't do anything with this
-            # field.
-            # if self.diskno == 0xffff:
-            #     self.diskno = counts[zip64_field_cnt]
-            #     zip64_field_cnt += 1
+            if self.compress_size == 0xffffffff:
+                field = "Compress size"
+                self.compress_size = counts[zip64_field_cnt]
+                zip64_field_cnt += 1
+
+            if is_central_directory:
+                if self.header_offset == 0xffffffff:
+                    field = "Header offset"
+                    self.header_offset = counts[zip64_field_cnt]
+                    zip64_field_cnt += 1
+
+                # For completeness - The spec defines a way for handling a larger
+                # number of disks than can fit into 2 bytes. As zipfile currently
+                # doesn't support multiple disks we don't do anything with this
+                # field.
+                # if self.diskno == 0xffff:
+                #     field = "Disk number"
+                #     self.diskno = counts[zip64_field_cnt]
+                #     zip64_field_cnt += 1
+        except IndexError:
+            raise BadZipFile(
+                "Corrupt zip64 extra field. {} not found.".format(field)
+            ) from None
 
     def get_extra_decoders(self):
         return {
