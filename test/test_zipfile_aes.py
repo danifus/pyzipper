@@ -15,6 +15,7 @@ from pyzipper import zipfile_aes
 
 
 FIXEDTEST_SIZE = 1000
+TEST_DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
 
 
 try:
@@ -482,6 +483,25 @@ class WZAESTests(unittest.TestCase):
                 # Read the file completely to definitely call any eof integrity
                 # checks (hmac/crc) and make sure they still pass.
                 fp.read()
+
+    def test_read_padded_file(self):
+        """
+        Files with LMZA / AES padding should not raise BadZipFile with a HMAC mismatch.
+
+        The test file has random content.
+        """
+        pwd = b'passwd'
+        archive_name = 'padded-when-compressed'
+
+        test_zip_path = os.path.join(TEST_DATA_DIR, 'lzma-padded.zip')
+
+        with zipfile_aes.AESZipFile(test_zip_path, "r") as zipfp:
+            zipfp.setencryption(zipfile_aes.WZ_AES)
+            zipfp.setpassword(pwd)
+            content = zipfp.open(archive_name).read()
+            self.assertEqual(len(content), 16184, msg='File size mismatch')
+            self.assertEqual(content[:4], b'\xcd\x07\x12\xd8')
+            self.assertEqual(content[-4:], b'\xc9\x8c\x66\x30')
 
 
 class AbstractTestsWithRandomBinaryFiles:

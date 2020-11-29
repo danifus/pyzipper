@@ -1476,7 +1476,7 @@ class ZipExtFile(io.BufferedIOBase):
 
         data = data[:self._left]
         self._left -= len(data)
-        if self._left <= 0:
+        if self._left <= 0 and (not self._decompressor or self._decompressor.eof):
             self._eof = True
         self._update_crc(data)
         if self._eof:
