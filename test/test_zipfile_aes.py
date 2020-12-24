@@ -484,6 +484,52 @@ class WZAESTests(unittest.TestCase):
                 fp.read()
 
 
+@requires_pycrypto
+@requires_lzma
+class WZAESLZMATests(unittest.TestCase):
+
+    def tearDown(self):
+        try:
+            unlink(TESTFN)
+        except FileNotFoundError:
+            pass
+
+    def test_lzma_files(self):
+        """End of stream marker is used in HMAC.
+
+        This is a test for the end of stream marker. We read one byte at a time
+        so that we've consumed all 'file_size' bytes but the end of stream
+        marker remains unread (_compress_left != 0).
+        """
+        expected_content = b"Test"
+        fname = "test.txt"
+
+        with zipfile_aes.AESZipFile(
+            TESTFN,
+            "w",
+            compression=zipfile.ZIP_LZMA,
+            encryption=zipfile_aes.WZ_AES,
+        ) as zipfp:
+            zipfp.setpassword(b"super secret")
+            zipfp.writestr(fname, expected_content)
+
+        with zipfile_aes.AESZipFile(
+            TESTFN,
+            compression=zipfile.ZIP_LZMA,
+            encryption=zipfile_aes.WZ_AES,
+        ) as zipfp:
+            zipfp.setpassword(b"super secret")
+            with zipfp.open(fname) as zf:
+                # read 1 byte at a time from the zipped stream
+                zf.MIN_READ_SIZE = 1
+                content_out = b""
+                char = zf.read(1)
+                while char:
+                    content_out += char
+                    char = zf.read(1)
+                self.assertEqual(content_out, expected_content)
+
+
 class AbstractTestsWithRandomBinaryFiles:
     compression = None
     encryption = None

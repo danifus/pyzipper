@@ -8,7 +8,13 @@ from Cryptodome.Util import Counter
 from Cryptodome import Random
 
 from .zipfile import (
-    ZIP_BZIP2, BadZipFile, BaseZipDecrypter, ZipFile, ZipInfo, ZipExtFile,
+    ZIP_BZIP2,
+    ZIP_LZMA,
+    BadZipFile,
+    BaseZipDecrypter,
+    ZipFile,
+    ZipInfo,
+    ZipExtFile,
 )
 
 WZ_AES = 'WZ_AES'
@@ -291,6 +297,19 @@ class AESZipExtFile(ZipExtFile):
         return super().setup_decrypter()
 
     def check_wz_aes(self):
+        if self._zinfo.compress_type == ZIP_LZMA:
+            # LZMA may have an end of stream marker or padding. Make sure we
+            # read that to get the proper HMAC of the compressed byte stream.
+            while self._compress_left > 0:
+                data = self._read2(self.MIN_READ_SIZE)
+                # but we don't want to find any more data here.
+                data = self._decompressor.decompress(data)
+                if data:
+                    raise BadZipFile(
+                        "More data found than indicated by uncompressed size for "
+                        "'{}'".format(self.filename)
+                    )
+
         hmac_check = self._fileobj.read(self._decrypter.hmac_size)
         self._decrypter.check_hmac(hmac_check)
 
