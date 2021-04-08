@@ -6,10 +6,6 @@
         :target: https://pypi.org/project/pyzipper/
         :alt: Supported Python Versions
 
-.. image:: https://img.shields.io/travis/danifus/pyzipper.svg
-        :target: https://travis-ci.org/danifus/pyzipper
-        :alt: Travis build (Linux/OsX)
-
 
 pyzipper
 ========
