@@ -14,7 +14,10 @@
 pyzipper
 ========
 
-A 100% API compatible replacement for Python's ``zipfile`` that can read and write AES encrypted zip files.
+A replacement for Python's ``zipfile`` that can read and write AES encrypted
+zip files. Forked from Python 3.7's ``zipfile`` module, it features the same
+``zipfile`` API from that time (most notably, lacking support for
+``pathlib``-compatible wrappers that were introduced in Python 3.8).
 
 Installation
 ------------
