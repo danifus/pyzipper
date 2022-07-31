@@ -333,7 +333,7 @@ class AESZipFile(ZipFile):
     zipextfile_cls = AESZipExtFile
 
     def __init__(self, *args, **kwargs):
-        encryption = kwargs.pop('encryption', None)
+        encryption = kwargs.pop('encryption', WZ_AES)
         encryption_kwargs = kwargs.pop('encryption_kwargs', None)
         super().__init__(*args, **kwargs)
         self.encryption = encryption
