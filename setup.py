@@ -94,7 +94,7 @@ setup(
     keywords="zip aes encrypt decrypt",
     python_requires=REQUIRES_PYTHON,
     url=URL,
-    packages=find_packages(exclude=('tests', 'docs')),
+    packages=find_packages(exclude=('test', 'docs')),
     install_requires=REQUIRED,
     include_package_data=True,
     license='MIT',
