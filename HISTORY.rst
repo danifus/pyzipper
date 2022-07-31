@@ -2,6 +2,11 @@
 History
 =======
 
+0.3.6 (2022-07-31)
+------------------
+* Exclude test, not tests, from setup.py packaging
+
+
 0.3.5 (2021-04-08)
 ------------------
 * Update trove classifiers to include python 3.8 and 3.9
