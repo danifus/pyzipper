@@ -1685,6 +1685,7 @@ class ZipFile:
     fp = None                   # Set here since __del__ checks it
     _windows_illegal_name_trans_table = None
     zipinfo_cls = ZipInfo
+    zipinfo_cls_cleartext = ZipInfo
     zipextfile_cls = ZipExtFile
     zipwritefile_cls = _ZipWriteFile
 
@@ -1963,7 +1964,7 @@ class ZipFile:
         with self.open(name, "r", pwd) as fp:
             return fp.read()
 
-    def open(self, name, mode="r", pwd=None, *, force_zip64=False):
+    def open(self, name, mode="r", pwd=None, *, force_zip64=False, encrypt=True):
         """Return file-like object for 'name'.
 
         name is a string for the file name within the ZIP file, or a ZipInfo
@@ -1991,11 +1992,14 @@ class ZipFile:
             raise TypeError("pwd: expected bytes, got %s" % type(pwd).__name__)
 
         # Make sure we have an info object
-        if isinstance(name, self.zipinfo_cls):
+        if isinstance(name, (self.zipinfo_cls, self.zipinfo_cls_cleartext)):
             # 'name' is already an info object
             zinfo = name
         elif mode == 'w':
-            zinfo = self.zipinfo_cls(name)
+            if encrypt:
+                zinfo = self.zipinfo_cls(name)
+            else:
+                zinfo = self.zipinfo_cls_cleartext(name)
             zinfo.compress_type = self.compression
             zinfo._compresslevel = self.compresslevel
         else:
@@ -2003,7 +2007,8 @@ class ZipFile:
             zinfo = self.getinfo(name)
 
         if mode == 'w':
-            return self._open_to_write(zinfo, force_zip64=force_zip64, pwd=pwd)
+            return self._open_to_write(zinfo,
+                force_zip64=force_zip64, pwd=pwd, encrypt=encrypt)
 
         if self._writing:
             raise ValueError("Can't read from the ZIP file while there "
@@ -2023,7 +2028,7 @@ class ZipFile:
             zef_file.close()
             raise e
 
-    def _open_to_write(self, zinfo, force_zip64=False, pwd=None):
+    def _open_to_write(self, zinfo, force_zip64=False, pwd=None, encrypt=True):
         if force_zip64 and not self._allowZip64:
             raise ValueError(
                 "force_zip64 is True, but allowZip64 was False when opening "
@@ -2043,7 +2048,7 @@ class ZipFile:
 
         zinfo.flag_bits = 0x00
         encrypter = None
-        if pwd is not None or self.encryption is not None:
+        if (pwd is not None or self.encryption is not None) and encrypt:
             zinfo.flag_bits |= _MASK_ENCRYPTED
             encrypter = self.get_encrypter()
             encrypter.update_zipinfo(zinfo)
@@ -2235,7 +2240,7 @@ class ZipFile:
                 shutil.copyfileobj(src, dest, 1024*8)
 
     def writestr(self, zinfo_or_arcname, data,
-                 compress_type=None, compresslevel=None):
+                 compress_type=None, compresslevel=None, encrypt=True):
         """Write a file into the archive.  The contents is 'data', which
         may be either a 'str' or a 'bytes' instance; if it is a 'str',
         it is encoded as UTF-8 first.
@@ -2273,7 +2278,7 @@ class ZipFile:
 
         zinfo.file_size = len(data)            # Uncompressed size
         with self._lock:
-            with self.open(zinfo, mode='w') as dest:
+            with self.open(zinfo, mode='w', encrypt=encrypt) as dest:
                 dest.write(data)
 
     def __del__(self):
