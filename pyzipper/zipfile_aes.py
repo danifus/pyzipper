@@ -165,7 +165,7 @@ class AESZipEncrypter(BaseZipEncrypter):
         enckey = keymaterial[:key_length]
         self.encrypter = Cipher(
             algorithms.AES(enckey),
-            modes.CTR(b'\x00' * 16),
+            modes.CTR(os.urandom(16)),
             backend=backend,
         ).encryptor()
         encmac_key = keymaterial[key_length:2*key_length]
