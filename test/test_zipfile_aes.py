@@ -18,14 +18,14 @@ FIXEDTEST_SIZE = 1000
 
 
 try:
-    import Cryptodome
+    import Crypto
 except ImportError:
-    Cryptodome = None
+    Crypto = None
 
-requires_pycrypto = unittest.skipUnless(Cryptodome, 'requires pycryptodomex')
+requires_cryptography = unittest.skipUnless(Crypto, 'requires cryptography')
 
 
-@requires_pycrypto
+@requires_cryptography
 class WZAESKnownFileTests(unittest.TestCase):
     """Test decryption against invariant files for behaviour.
 
@@ -214,7 +214,7 @@ class WZAESKnownFileTests(unittest.TestCase):
                 zipfp.read('test.txt', pwd=b'test')
 
 
-@requires_pycrypto
+@requires_cryptography
 class WZAESTests(unittest.TestCase):
 
     def tearDown(self):
@@ -484,7 +484,7 @@ class WZAESTests(unittest.TestCase):
                 fp.read()
 
 
-@requires_pycrypto
+@requires_cryptography
 @requires_lzma
 class WZAESLZMATests(unittest.TestCase):
 
@@ -644,7 +644,7 @@ class AbstractTestsWithRandomBinaryFiles:
             self.zip_random_open_test(f, self.compression)
 
 
-@requires_pycrypto
+@requires_cryptography
 class WZAESStoredTestsWithRandomBinaryFiles(AbstractTestsWithRandomBinaryFiles,
                                             unittest.TestCase):
     compression = zipfile.ZIP_STORED
@@ -652,7 +652,7 @@ class WZAESStoredTestsWithRandomBinaryFiles(AbstractTestsWithRandomBinaryFiles,
     pwd = b'this is a test password'
 
 
-@requires_pycrypto
+@requires_cryptography
 @requires_zlib
 class WZAESDeflateTestsWithRandomBinaryFiles(AbstractTestsWithRandomBinaryFiles,
                                              unittest.TestCase):
@@ -661,7 +661,7 @@ class WZAESDeflateTestsWithRandomBinaryFiles(AbstractTestsWithRandomBinaryFiles,
     pwd = b'this is a test password'
 
 
-@requires_pycrypto
+@requires_cryptography
 @requires_bz2
 class WZAESBzip2TestsWithRandomBinaryFiles(AbstractTestsWithRandomBinaryFiles,
                                            unittest.TestCase):
@@ -670,7 +670,7 @@ class WZAESBzip2TestsWithRandomBinaryFiles(AbstractTestsWithRandomBinaryFiles,
     pwd = b'this is a test password'
 
 
-@requires_pycrypto
+@requires_cryptography
 @requires_lzma
 class WZAESLzmaTestsWithRandomBinaryFiles(AbstractTestsWithRandomBinaryFiles,
                                           unittest.TestCase):
