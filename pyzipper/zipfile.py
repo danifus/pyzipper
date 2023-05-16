@@ -1720,7 +1720,7 @@ class ZipFile:
         else:
             if isinstance(file, pathlib.PurePath):
                 file = str(file)
-        if isinstance(file, str):
+        if isinstance(file, (str, bytes)):
             # No, it's a filename
             self._filePassed = 0
             self.filename = file
