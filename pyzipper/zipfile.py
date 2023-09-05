@@ -36,7 +36,7 @@ except ImportError:
 
 __all__ = ["BadZipFile", "BadZipfile", "error",
            "ZIP_STORED", "ZIP_DEFLATED", "ZIP_BZIP2", "ZIP_LZMA",
-           "is_zipfile", "ZipInfo", "ZipFile", "PyZipFile", "LargeZipFile"]
+           "is_zipfile", "ZipInfo", "ZipFile", "ZipFileRW", "PyZipFile", "LargeZipFile"]
 
 
 class BadZipFile(Exception):
@@ -2541,6 +2541,195 @@ class PyZipFile(ZipFile):
         if basename:
             archivename = "%s/%s" % (basename, archivename)
         return (fname, archivename)
+
+
+class ZipFileRW(ZipFile):
+    DELETED_JUNK   = b'DELETED' * 1024
+    DELETED_FN_FMT = 'DELETED/%s'
+
+    DELETE_IS_INSECURE = False   # Set to True, to leave "deleted" data in
+                                 # the archive body - only deleting entries
+                                 # from the central directory. Setting to True
+                                 # also disables compaction.
+
+    COMPACTING_THRESHOLD = 0.0   # Set to a ratio of allowable wasted space,
+                                 # to reduce the I/O overhead of deletion.
+
+    def _raw_data_length(self, zinfo):
+        """
+        This calculates how many bytes of the archive are dedicated to
+        this file/directory. This is guaranteed to never overlap with
+        any other files, even if headers are corrupt or our code buggy.
+        """
+        offsets = [zi.header_offset for zi in self.filelist]
+        offsets.append(self.start_dir)
+        offsets.sort()
+        for i, o in enumerate(offsets):
+            if o == zinfo.header_offset:
+                return (offsets[i+1] - o)
+        return 0
+
+    def _overwrite_deleted_data(self, zinfo):
+        """
+        Overwrite the data in the archive with junk (unless insecure deletion
+        is requested). If we are lucky and this is the last entry in the
+        archive, truncate it.
+
+        Returns the (ofs, length) of the overwritten segment, False if we
+        truncated, or None if deletion is insecure or the entry not found.
+        """
+        junk_bytes = self._raw_data_length(zinfo)
+        if not junk_bytes:
+            return None
+
+        self._writing = True
+
+        if self.DELETE_IS_INSECURE:
+            gap = None
+        else:
+            gap = (zinfo.header_offset, junk_bytes)
+            self._didModify = True
+            self.fp.seek(zinfo.header_offset)
+            while True:
+                if junk_bytes > len(self.DELETED_JUNK):
+                    self.fp.write(self.DELETED_JUNK)
+                    junk_bytes -= len(self.DELETED_JUNK)
+                else:
+                    self.fp.write(self.DELETED_JUNK[:junk_bytes])
+                    break
+            self.fp.seek(self.start_dir)
+
+        if (zinfo.header_offset + junk_bytes) == self.start_dir:
+            self._didModify = True
+            self.fp.seek(zinfo.header_offset)
+            self.fp.truncate(zinfo.header_offset)
+            self.start_dir = zinfo.header_offset
+            gap = False
+
+        self._writing = False
+        return gap
+
+    def _move(self, zinfo, new_pos):
+        """
+        Move a file to a new location within the archive. Overlap between
+        the source and destination is only allowed if moving backwards.
+        """
+        data_bytes = self._raw_data_length(zinfo)
+        _from = zinfo.header_offset
+        _to = new_pos
+
+        if _from != _to:
+            if _from < _to < _from + data_bytes:
+                raise io.UnsupportedOperation(
+                    'Overlapping ranges are only safe when moving backwards')
+
+            self._didModify = True
+            _bytes = data_bytes
+            while _bytes > 0:
+                self.fp.seek(_from)
+                data = self.fp.read(min(_bytes, 256*1024))
+                self.fp.seek(_to)
+                self.fp.write(data)
+                _bytes -= len(data)
+                _from += len(data)
+                _to += len(data)
+            self.fp.seek(self.start_dir)
+            zinfo.header_offset = new_pos
+        return new_pos + data_bytes
+
+    def delete(self, filename):
+        """
+        Delete an entry from the archive.
+        """
+        if not self._seekable:
+            raise io.UnsupportedOperation('Can only delete from seekable files')
+
+        if hasattr(filename, 'filename'):
+            filename = filename.filename
+
+        with self._lock:
+            zinfo = self.NameToInfo[filename]  # May throw KeyError
+            del self.NameToInfo[filename]
+            gap = self._overwrite_deleted_data(zinfo)
+            if gap:
+                fn = self.DELETED_FN_FMT % gap[0]
+                gap_zinfo = self.zipinfo_cls(fn)
+                gap_zinfo.header_offset = gap[0]
+                gap_zinfo.compress_size = 0
+                gap_zinfo.file_size = 0
+                gap_zinfo.CRC = 0
+                self.NameToInfo[fn] = gap_zinfo
+                self.filelist[self.filelist.index(zinfo)] = gap_zinfo
+            else:
+                self.filelist.remove(zinfo)
+            self._didModify = True
+
+    def compact(self, threshold=0):
+        """
+        Reclaime unused space after one or more deletions, by rewriting
+        the archive in-place.
+
+        WARNING: This may leave the archive in a corrupt state, if
+                 interrupted part-way through.
+        """
+        if not self._seekable:
+            return
+
+        def is_del(zi):
+            return (
+                (zi.compress_size == zi.CRC == zi.file_size == 0) and
+                (zi.filename.startswith(self.DELETED_FN_FMT % '')))
+
+        with self._lock:
+            deleted = [zi.header_offset for zi in self.filelist if is_del(zi)]
+            if not deleted:
+                return
+
+            # Generate a list of (offset, zipinfo) tuples which is in the
+            # same order as the data in the archive itself. This guarantees
+            # our _move() ops below will always succeed.
+            offsets = [(zi.header_offset, zi)
+                       for i, zi in enumerate(self.filelist)]
+            offsets.sort()
+
+            # If a threshold is set, calculate how much space is being
+            # wasted before we proceed. If below the threshold, abort!
+            if threshold:
+                total = 0.0
+                wasted = 0.0
+                for i, (ofs, zi) in enumerate(offsets[:-1]):
+                    size = offsets[i+1][0] - ofs
+                    total += size
+                    if ofs in deleted:
+                        wasted += size
+                if (wasted / total) < threshold:
+                    return
+
+            writing_to = 0
+            keep = []
+            self._writing = True
+            self._didModify = True
+            for ofs, zinfo in offsets:
+                if ofs in deleted:
+                    # Remove it in case we get interrupted; it is
+                    # probably about to be overwritten!
+                    self.filelist.remove(zinfo)
+                else:
+                    # Not deleted: move forward if necessary!
+                    writing_to = self._move(zinfo, writing_to)
+                    keep.append(zinfo)
+
+            self.fp.truncate(writing_to)
+            self.fp.seek(writing_to)
+            self.start_dir = writing_to
+            self.filelist = keep
+            self.NameToInfo = dict((zi.filename, zi) for zi in keep)
+            self._writing = False
+
+    def _write_end_record(self):
+        if not self.DELETE_IS_INSECURE:
+            self.compact(threshold=self.COMPACTING_THRESHOLD)
+        return super()._write_end_record()
 
 
 def main(args=None):
