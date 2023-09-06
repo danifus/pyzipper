@@ -2777,7 +2777,7 @@ class ZipFileRW(ZipFile):
                 self._writing = False
 
     def _write_end_record(self):
-        if not self.insecure_delete:
+        if not self.insecure_delete and self.compacting_threshold is not False:
             self.compact(threshold=self.compacting_threshold)
         return super()._write_end_record()
 
