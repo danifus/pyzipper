@@ -12,7 +12,7 @@ from .zipfile import (
     ZIP_LZMA,
     BadZipFile,
     BaseZipDecrypter,
-    ZipFile,
+    ZipFileRW,
     ZipInfo,
     ZipExtFile,
 )
@@ -328,7 +328,7 @@ class AESZipExtFile(ZipExtFile):
             super().check_integrity()
 
 
-class AESZipFile(ZipFile):
+class AESZipFile(ZipFileRW):
     zipinfo_cls = AESZipInfo
     zipextfile_cls = AESZipExtFile
 

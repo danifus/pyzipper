@@ -847,6 +847,92 @@ class LzmaWriterTests(AbstractWriterTests, unittest.TestCase):
     compression = zipfile.ZIP_LZMA
 
 
+class ZipFileRWTests(AbstractWriterTests, unittest.TestCase):
+    compression = zipfile.ZIP_STORED
+    ZIPFILE_CLS = zipfile_aes.AESZipFile
+
+    def test_delete_secure(self):
+        junk = self.ZIPFILE_CLS.DELETED_JUNK[:10]
+        data = b'content'
+        kwargs = {
+            'compression': self.compression,
+            'insecure_delete': False,       # Secure deletion please!
+            'compacting_threshold': False}  # Disable auto-compaction
+
+        with self.ZIPFILE_CLS(TESTFN2, "w", **kwargs) as zipf:
+            with zipf.open('test', 'w') as w:
+                w.write(data)
+            with zipf.open('test2', 'w') as w:
+                w.write(data * 2)
+            with zipf.open('test3', 'w') as w:
+                w.write(data * 3)
+
+        with self.ZIPFILE_CLS(TESTFN2, "a", **kwargs) as zipf:
+            self.assertEqual(zipf.read('test'), data)
+            zipf.delete('test')
+            try:
+                zipf.read('test')
+                self.assertFalse('not reached')
+            except KeyError:
+                pass  # Great, deletion worked!
+            with zipf.open('test4', 'w') as w:
+                w.write(data * 4)
+
+        with open(TESTFN2, 'rb') as raw:
+            self.assertTrue(junk in raw.read())
+
+        with self.ZIPFILE_CLS(TESTFN2, "a", **kwargs) as zipf:
+            try:
+                zipf.read('test')
+                self.assertFalse('not reached')
+            except KeyError:
+                pass  # Great, deletion worked!
+            self.assertEqual(zipf.read('test2'), data * 2)
+            self.assertEqual(zipf.read('test3'), data * 3)
+            self.assertEqual(zipf.read('test4'), data * 4)
+            zipf.compact()
+            zipf.delete('test4')
+
+        with open(TESTFN2, 'rb') as raw:
+            # We compacted, and then deleted the LAST file in the archive
+            # (which auto-truncates), so the archive should have no junk.
+            self.assertTrue(junk not in raw.read())
+
+        with self.ZIPFILE_CLS(TESTFN2, "a", **kwargs) as zipf:
+            self.assertEqual(zipf.read('test2'), data * 2)
+            self.assertEqual(zipf.read('test3'), data * 3)
+
+    def test_delete_insecure(self):
+        junk = self.ZIPFILE_CLS.DELETED_JUNK[:10]
+        data1 = b'insecure'
+        data2 = b'content'
+        kwargs = {
+            'compression': self.compression,
+            'insecure_delete': True}
+
+        with self.ZIPFILE_CLS(TESTFN2, "w", **kwargs) as zipf:
+            with zipf.open('test1', 'w') as w:
+                w.write(data1)
+            with zipf.open('test2', 'w') as w:
+                w.write(data2)
+
+        with self.ZIPFILE_CLS(TESTFN2, "a", **kwargs) as zipf:
+            self.assertEqual(zipf.read('test1'), data1)
+            self.assertEqual(zipf.read('test2'), data2)
+            zipf.delete('test1')
+            try:
+                zipf.read('test1')
+                self.assertFalse('not reached')
+            except KeyError:
+                pass  # Great, deletion worked!
+            zipf.compact()  # Shouldn't do much of anything
+
+        with open(TESTFN2, 'rb') as raw:
+            raw_data = raw.read()
+            self.assertTrue(data1 in raw_data)  # The raw data is still there
+            self.assertTrue(junk not in raw_data)
+
+
 @unittest.skipIf(sys.version_info[0:2] < (3, 5), 'Requires Python >= 3.5')
 class PyZipFileTests(unittest.TestCase):
     def assertCompiledIn(self, name, namelist):

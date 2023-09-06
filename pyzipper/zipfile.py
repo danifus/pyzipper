@@ -36,7 +36,7 @@ except ImportError:
 
 __all__ = ["BadZipFile", "BadZipfile", "error",
            "ZIP_STORED", "ZIP_DEFLATED", "ZIP_BZIP2", "ZIP_LZMA",
-           "is_zipfile", "ZipInfo", "ZipFile", "PyZipFile", "LargeZipFile"]
+           "is_zipfile", "ZipInfo", "ZipFile", "ZipFileRW", "PyZipFile", "LargeZipFile"]
 
 
 class BadZipFile(Exception):
@@ -1685,6 +1685,7 @@ class ZipFile:
     fp = None                   # Set here since __del__ checks it
     _windows_illegal_name_trans_table = None
     zipinfo_cls = ZipInfo
+    zipinfo_cls_cleartext = ZipInfo
     zipextfile_cls = ZipExtFile
     zipwritefile_cls = _ZipWriteFile
 
@@ -1719,7 +1720,7 @@ class ZipFile:
         else:
             if isinstance(file, pathlib.PurePath):
                 file = str(file)
-        if isinstance(file, str):
+        if isinstance(file, (str, bytes)):
             # No, it's a filename
             self._filePassed = 0
             self.filename = file
@@ -1963,7 +1964,7 @@ class ZipFile:
         with self.open(name, "r", pwd) as fp:
             return fp.read()
 
-    def open(self, name, mode="r", pwd=None, *, force_zip64=False):
+    def open(self, name, mode="r", pwd=None, *, force_zip64=False, encrypt=True):
         """Return file-like object for 'name'.
 
         name is a string for the file name within the ZIP file, or a ZipInfo
@@ -1991,11 +1992,14 @@ class ZipFile:
             raise TypeError("pwd: expected bytes, got %s" % type(pwd).__name__)
 
         # Make sure we have an info object
-        if isinstance(name, self.zipinfo_cls):
+        if isinstance(name, (self.zipinfo_cls, self.zipinfo_cls_cleartext)):
             # 'name' is already an info object
             zinfo = name
         elif mode == 'w':
-            zinfo = self.zipinfo_cls(name)
+            if encrypt:
+                zinfo = self.zipinfo_cls(name)
+            else:
+                zinfo = self.zipinfo_cls_cleartext(name)
             zinfo.compress_type = self.compression
             zinfo._compresslevel = self.compresslevel
         else:
@@ -2003,7 +2007,10 @@ class ZipFile:
             zinfo = self.getinfo(name)
 
         if mode == 'w':
-            return self._open_to_write(zinfo, force_zip64=force_zip64, pwd=pwd)
+            return self._open_to_write(zinfo,
+                                       force_zip64=force_zip64,
+                                       pwd=pwd,
+                                       encrypt=encrypt)
 
         if self._writing:
             raise ValueError("Can't read from the ZIP file while there "
@@ -2023,7 +2030,7 @@ class ZipFile:
             zef_file.close()
             raise e
 
-    def _open_to_write(self, zinfo, force_zip64=False, pwd=None):
+    def _open_to_write(self, zinfo, force_zip64=False, pwd=None, encrypt=True):
         if force_zip64 and not self._allowZip64:
             raise ValueError(
                 "force_zip64 is True, but allowZip64 was False when opening "
@@ -2043,7 +2050,7 @@ class ZipFile:
 
         zinfo.flag_bits = 0x00
         encrypter = None
-        if pwd is not None or self.encryption is not None:
+        if (pwd is not None or self.encryption is not None) and encrypt:
             zinfo.flag_bits |= _MASK_ENCRYPTED
             encrypter = self.get_encrypter()
             encrypter.update_zipinfo(zinfo)
@@ -2186,7 +2193,7 @@ class ZipFile:
                                    " would require ZIP64 extensions")
 
     def write(self, filename, arcname=None,
-              compress_type=None, compresslevel=None):
+              compress_type=None, compresslevel=None, encrypt=True):
         """Put the bytes from filename into the archive under the name
         arcname."""
         if not self.fp:
@@ -2231,11 +2238,11 @@ class ZipFile:
                 self.fp.write(zinfo.FileHeader(False))
                 self.start_dir = self.fp.tell()
         else:
-            with open(filename, "rb") as src, self.open(zinfo, 'w') as dest:
+            with open(filename, "rb") as src, self.open(zinfo, 'w', encrypt=encrypt) as dest:
                 shutil.copyfileobj(src, dest, 1024*8)
 
     def writestr(self, zinfo_or_arcname, data,
-                 compress_type=None, compresslevel=None):
+                 compress_type=None, compresslevel=None, encrypt=True):
         """Write a file into the archive.  The contents is 'data', which
         may be either a 'str' or a 'bytes' instance; if it is a 'str',
         it is encoded as UTF-8 first.
@@ -2273,7 +2280,7 @@ class ZipFile:
 
         zinfo.file_size = len(data)            # Uncompressed size
         with self._lock:
-            with self.open(zinfo, mode='w') as dest:
+            with self.open(zinfo, mode='w', encrypt=encrypt) as dest:
                 dest.write(data)
 
     def __del__(self):
@@ -2536,6 +2543,244 @@ class PyZipFile(ZipFile):
         if basename:
             archivename = "%s/%s" % (basename, archivename)
         return (fname, archivename)
+
+
+class ZipFileRW(ZipFile):
+    """ ZipFile subclass which can delete in-place from ZIP archives.
+
+    z = ZipFileRW(file, mode="a",
+                  insecure_delete=False,
+                  compacting_threshold=0.0,
+                  ... )
+
+    In addition to inherited ZipFile arguments, ZipFileRW settings are:
+
+    insecure_delete:  Set to True, to leave "deleted" data in the archive
+                      body. In this mode, deleting only removes entries
+                      from the central directory. This is faster and makes
+                      it theoretically possible to restore deleted files.
+                      When True, archive compaction is disabled.
+
+    compacting_threshold:  A ratio of allowable wasted space (0.5 = 50%).
+                           Setting to a value above the default of 0 will
+                           reduce disk I/O somewhat, at the expense of
+                           wasting space. It will also leave "DELETED"
+                           entries the directory until compacted.
+    """
+    DELETED_JUNK = b'DELETED!' * 1024
+    DELETED_FN_FMT = 'DELETED/%s'
+
+    # Subclasses can override these to adjust defaults, which will make
+    # sense for apps that know what their use profile is.
+    INSECURE_DELETE = False
+    COMPACTING_THRESHOLD = 0.0
+
+    def __init__(self, *args, **kwargs):
+        """
+        A subclass of ZipFile
+        """
+        self.compacting_threshold = kwargs.pop(
+            'compacting_threshold', self.COMPACTING_THRESHOLD)
+        self.insecure_delete = kwargs.pop(
+            'insecure_delete', self.INSECURE_DELETE)
+        self.deleted_fn_fmt = kwargs.pop(
+            'deleted_fn_fmt', self.DELETED_FN_FMT)
+        super().__init__(*args, **kwargs)
+
+    def _raw_data_length(self, zinfo):
+        """
+        This calculates how many bytes of the archive are dedicated to
+        this file/directory. This is guaranteed to never overlap with
+        any other files, even if headers are corrupt or our code buggy.
+        """
+        offsets = [zi.header_offset for zi in self.filelist]
+        offsets.append(self.start_dir)
+        offsets.sort()
+        for i, o in enumerate(offsets):
+            if o == zinfo.header_offset:
+                return (offsets[i+1] - o)
+        return 0
+
+    def _overwrite_deleted_data(self, zinfo):
+        """
+        Overwrite the data in the archive with junk (unless insecure deletion
+        is requested). If we are lucky and this is the last entry in the
+        archive, truncate it.
+
+        Returns the (ofs, length) of the overwritten segment, False if we
+        truncated, or None if deletion is insecure or the entry not found.
+        """
+        junk_bytes = self._raw_data_length(zinfo)
+        if not junk_bytes:
+            return None
+
+        self._writing = True
+
+        if self.insecure_delete:
+            gap = None
+        else:
+            gap = (zinfo.header_offset, junk_bytes)
+            self._didModify = True
+            self.fp.seek(zinfo.header_offset)
+            while True:
+                if junk_bytes > len(self.DELETED_JUNK):
+                    self.fp.write(self.DELETED_JUNK)
+                    junk_bytes -= len(self.DELETED_JUNK)
+                else:
+                    self.fp.write(self.DELETED_JUNK[:junk_bytes])
+                    break
+            self.fp.seek(self.start_dir)
+
+        if (zinfo.header_offset + junk_bytes) == self.start_dir:
+            self._didModify = True
+            self.fp.seek(zinfo.header_offset)
+            self.fp.truncate(zinfo.header_offset)
+            self.start_dir = zinfo.header_offset
+            gap = False
+
+        self._writing = False
+        return gap
+
+    def _move(self, zinfo, new_pos):
+        """
+        Move a file to a new location within the archive. Overlap between
+        the source and destination is only allowed if moving backwards.
+        """
+        data_bytes = self._raw_data_length(zinfo)
+        src = zinfo.header_offset
+        dst = new_pos
+
+        if src != dst:
+            if src < dst < src + data_bytes:
+                raise io.UnsupportedOperation(
+                    'Overlapping moves are only safe when moving backwards')
+
+            # Overlapping moves risk corrupting the archive if we are
+            # interrupted. We at least try to handle that!
+            overlap = (dst < src < dst + data_bytes)
+            interrupted = None
+
+            self._didModify = True
+            chunk_size = 256 * 1024
+            try:
+                for ofs in range(0, data_bytes, chunk_size):
+                    while True:
+                        try:
+                            self.fp.seek(src + ofs)
+                            chunk = self.fp.read(min(chunk_size, data_bytes - ofs))
+                            self.fp.seek(dst + ofs)
+                            self.fp.write(chunk)
+                            break
+                        except KeyboardInterrupt as e:
+                            interrupted = e
+                            if not overlap:
+                                # Aborting part way through is fine, old data is
+                                # intact. Respect user wishes and abort.
+                                raise
+                zinfo.header_offset = new_pos
+                if interrupted is not None:
+                    raise KeyboardInterrupt(interrupted)
+            finally:
+                self.fp.seek(self.start_dir)
+        return new_pos + data_bytes
+
+    def delete(self, zinfo_or_arcname):
+        """
+        Delete an entry from the archive.
+
+        By default (when insecure_delete=False) the archived data will be
+        overwritten with garbage. Space is reclaimed upon compaction.
+        """
+        if not self._seekable:
+            raise io.UnsupportedOperation('Can only delete from seekable files')
+
+        if hasattr(zinfo_or_arcname, 'filename'):
+            arcname = zinfo_or_arcname.filename
+        else:
+            arcname = zinfo_or_arcname
+
+        with self._lock:
+            zinfo = self.NameToInfo[arcname]  # May throw KeyError
+            del self.NameToInfo[arcname]
+            gap = self._overwrite_deleted_data(zinfo)
+            if gap:
+                fn = self.deleted_fn_fmt % gap[0]
+                gap_zinfo = self.zipinfo_cls(fn)
+                gap_zinfo.header_offset = gap[0]
+                gap_zinfo.compress_size = 0
+                gap_zinfo.file_size = 0
+                gap_zinfo.CRC = 0
+                self.NameToInfo[fn] = gap_zinfo
+                self.filelist[self.filelist.index(zinfo)] = gap_zinfo
+            else:
+                self.filelist.remove(zinfo)
+            self._didModify = True
+
+    def compact(self, threshold=0.0):
+        """
+        Reclaim unused space after one or more deletions, by rewriting
+        the archive in-place. DELETED/... entries are removed from the
+        central directory.
+
+        WARNING: This may leave the archive in a corrupt state, if
+                 interrupted part-way through.
+        """
+        if not self._seekable:
+            return
+
+        def is_del(zi):
+            return (
+                (zi.compress_size == zi.CRC == zi.file_size == 0) and
+                (zi.filename.startswith(self.DELETED_FN_FMT % '')))
+
+        with self._lock:
+            deleted = [zi.header_offset for zi in self.filelist if is_del(zi)]
+            if not deleted:
+                return
+
+            # Generate a list of (offset, zipinfo) tuples which is in the
+            # same order as the data in the archive itself. This guarantees
+            # our _move() ops below will always succeed.
+            offsets = [(zi.header_offset, zi)
+                       for i, zi in enumerate(self.filelist)]
+            offsets.sort()
+
+            # If a threshold is set, calculate how much space is being
+            # wasted before we proceed. If below the threshold, abort!
+            if threshold:
+                total = 0.0
+                wasted = 0.0
+                for i, (ofs, zi) in enumerate(offsets[:-1]):
+                    size = offsets[i+1][0] - ofs
+                    total += size
+                    if ofs in deleted:
+                        wasted += size
+                if (wasted / total) < threshold:
+                    return
+
+            try:
+                writing_to = 0
+                self._writing = True
+                self._didModify = True
+                for ofs, zinfo in offsets:
+                    if ofs in deleted:
+                        # Remove! Probably about to be overwritten.
+                        self.filelist.remove(zinfo)
+                    else:
+                        # Keep: Move forward in the archive, if necessary.
+                        writing_to = self._move(zinfo, writing_to)
+                self.fp.truncate(writing_to)
+                self.start_dir = writing_to
+            finally:
+                # This cleanup happens even if we were interrupted.
+                self.fp.seek(self.start_dir)
+                self.NameToInfo = dict((i.filename, i) for i in self.filelist)
+                self._writing = False
+
+    def _write_end_record(self):
+        if not self.insecure_delete and self.compacting_threshold is not False:
+            self.compact(threshold=self.compacting_threshold)
+        return super()._write_end_record()
 
 
 def main(args=None):
