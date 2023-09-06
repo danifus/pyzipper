@@ -152,6 +152,12 @@ class AbstractTestsWithSourceFile:
         for f in get_files(self):
             self.zip_open_test(f, self.compression)
 
+    def test_open_with_bytes(self):
+        path = bytes(TESTFN2, 'utf-8')
+        self.zip_open_test(path, self.compression)
+        with zipfile.ZipFile(path, "r", self.compression) as zipfp:
+            self.assertIsInstance(zipfp.filename, bytes)
+
     def test_open_with_pathlike(self):
         path = pathlib.Path(TESTFN2)
         self.zip_open_test(path, self.compression)
