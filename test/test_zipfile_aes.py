@@ -555,7 +555,7 @@ class AbstractTestsWithRandomBinaryFiles:
         if self.encryption and self.pwd:
             zipfp.setpassword(self.pwd)
 
-    def make_test_archive(self, f, compression):
+    def make_test_archive(self, f, compression, partial_enc=False):
         # Create the ZIP archive
         with zipfile_aes.AESZipFile(f, "w", compression) as zipfp:
             if self.encryption:
@@ -570,15 +570,25 @@ class AbstractTestsWithRandomBinaryFiles:
                     **encryption_kwargs
                 )
             zipfp.write(TESTFN, "another.name")
-            zipfp.write(TESTFN, TESTFN)
+            zipfp.write(TESTFN, TESTFN, encrypt=(not partial_enc))
 
-    def zip_test(self, f, compression):
-        self.make_test_archive(f, compression)
+    def zip_test(self, f, compression, partial_enc=False):
+        self.make_test_archive(f, compression, partial_enc=partial_enc)
 
         # Read the ZIP archive
         with zipfile_aes.AESZipFile(f, "r", compression) as zipfp:
-            self.set_pwd_if_needed(zipfp)
-            testdata = zipfp.read(TESTFN)
+            if partial_enc:
+                testdata = zipfp.read(TESTFN)  # Unencrypted: succeeds
+                try:
+                    unreadable = zipfp.read('another.name')  # Encrypted: fails
+                    self.assertFalse('not reached')
+                except RuntimeError:
+                    pass  # Good! Reading encrypted data failed.
+                self.set_pwd_if_needed(zipfp)
+            else:
+                self.set_pwd_if_needed(zipfp)
+                testdata = zipfp.read(TESTFN)
+
             self.assertEqual(len(testdata), len(self.data))
             self.assertEqual(testdata, self.data)
             self.assertEqual(zipfp.read("another.name"), self.data)
@@ -586,6 +596,10 @@ class AbstractTestsWithRandomBinaryFiles:
     def test_read(self):
         for f in get_files(self):
             self.zip_test(f, self.compression)
+
+    def test_partial_encryption(self):
+        for f in get_files(self):
+            self.zip_test(f, self.compression, partial_enc=True)
 
     def zip_open_test(self, f, compression):
         self.make_test_archive(f, compression)
