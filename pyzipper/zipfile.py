@@ -2544,16 +2544,47 @@ class PyZipFile(ZipFile):
 
 
 class ZipFileRW(ZipFile):
-    DELETED_JUNK   = b'DELETED' * 1024
+    """ ZipFile subclass which can delete in-place from ZIP archives.
+
+    z = ZipFileRW(file, mode="a",
+                  insecure_delete=False,
+                  compacting_threshold=0.0,
+                  ... )
+
+    In addition to inherited ZipFile arguments, ZipFileRW settings are:
+
+    insecure_delete:  Set to True, to leave "deleted" data in the archive
+                      body. In this mode, deleting only removes entries
+                      from the central directory. This is faster and makes
+                      it theoretically possible to restore deleted files.
+                      When True, archive compaction is disabled.
+
+    compacting_threshold:  A ratio of allowable wasted space (0.5 = 50%).
+                           Setting to a value above the default of 0 will
+                           reduce disk I/O somewhat, at the expense of
+                           wasting space. It will also leave "DELETED"
+                           entries the directory until compacted.
+    """
+    DELETED_JUNK   = b'DELETED!' * 1024
     DELETED_FN_FMT = 'DELETED/%s'
 
-    DELETE_IS_INSECURE = False   # Set to True, to leave "deleted" data in
-                                 # the archive body - only deleting entries
-                                 # from the central directory. Setting to True
-                                 # also disables compaction.
-
+    # Subclasses can override these to adjust defaults, which will make
+    # sense for apps that know what their use profile is.
+    INSECURE_DELETE = False
     COMPACTING_THRESHOLD = 0.0   # Set to a ratio of allowable wasted space,
                                  # to reduce the I/O overhead of deletion.
+
+    def __init__(self, *args, **kwargs):
+        """
+        A subclass of ZipFile
+        """
+        self.compacting_threshold = kwargs.pop(
+            'compacting_threshold', self.COMPACTING_THRESHOLD)
+        self.insecure_delete = kwargs.pop(
+            'insecure_delete', self.INSECURE_DELETE)
+        self.deleted_fn_fmt = kwargs.pop(
+            'deleted_fn_fmt', self.DELETED_FN_FMT)
+        super().__init__(*args, **kwargs)
 
     def _raw_data_length(self, zinfo):
         """
@@ -2584,7 +2615,7 @@ class ZipFileRW(ZipFile):
 
         self._writing = True
 
-        if self.DELETE_IS_INSECURE:
+        if self.insecure_delete:
             gap = None
         else:
             gap = (zinfo.header_offset, junk_bytes)
@@ -2637,22 +2668,27 @@ class ZipFileRW(ZipFile):
             zinfo.header_offset = new_pos
         return new_pos + data_bytes
 
-    def delete(self, filename):
+    def delete(self, zinfo_or_arcname):
         """
         Delete an entry from the archive.
+
+        By default (when insecure_delete=False) the archived data will be
+        overwritten with garbage. Space is reclaimed upon compaction.
         """
         if not self._seekable:
             raise io.UnsupportedOperation('Can only delete from seekable files')
 
-        if hasattr(filename, 'filename'):
-            filename = filename.filename
+        if hasattr(zinfo_or_arcname, 'filename'):
+            arcname = zinfo_or_arcname.filename
+        else:
+            arcname = zinfo_or_arcname
 
         with self._lock:
-            zinfo = self.NameToInfo[filename]  # May throw KeyError
-            del self.NameToInfo[filename]
+            zinfo = self.NameToInfo[arcname]  # May throw KeyError
+            del self.NameToInfo[arcname]
             gap = self._overwrite_deleted_data(zinfo)
             if gap:
-                fn = self.DELETED_FN_FMT % gap[0]
+                fn = self.deleted_fn_fmt % gap[0]
                 gap_zinfo = self.zipinfo_cls(fn)
                 gap_zinfo.header_offset = gap[0]
                 gap_zinfo.compress_size = 0
@@ -2664,10 +2700,11 @@ class ZipFileRW(ZipFile):
                 self.filelist.remove(zinfo)
             self._didModify = True
 
-    def compact(self, threshold=0):
+    def compact(self, threshold=0.0):
         """
-        Reclaime unused space after one or more deletions, by rewriting
-        the archive in-place.
+        Reclaim unused space after one or more deletions, by rewriting
+        the archive in-place. DELETED/... entries are removed from the
+        central directory.
 
         WARNING: This may leave the archive in a corrupt state, if
                  interrupted part-way through.
@@ -2705,30 +2742,28 @@ class ZipFileRW(ZipFile):
                 if (wasted / total) < threshold:
                     return
 
-            writing_to = 0
-            keep = []
-            self._writing = True
-            self._didModify = True
-            for ofs, zinfo in offsets:
-                if ofs in deleted:
-                    # Remove it in case we get interrupted; it is
-                    # probably about to be overwritten!
-                    self.filelist.remove(zinfo)
-                else:
-                    # Not deleted: move forward if necessary!
-                    writing_to = self._move(zinfo, writing_to)
-                    keep.append(zinfo)
-
-            self.fp.truncate(writing_to)
-            self.fp.seek(writing_to)
-            self.start_dir = writing_to
-            self.filelist = keep
-            self.NameToInfo = dict((zi.filename, zi) for zi in keep)
-            self._writing = False
+            try:
+                writing_to = 0
+                self._writing = True
+                self._didModify = True
+                for ofs, zinfo in offsets:
+                    if ofs in deleted:
+                        # Remove! Probably about to be overwritten.
+                        self.filelist.remove(zinfo)
+                    else:
+                        # Keep: Move forward in the archive, if necessary.
+                        writing_to = self._move(zinfo, writing_to)
+                self.fp.truncate(writing_to)
+                self.start_dir = writing_to
+            finally:
+                # This cleanup happens even if we were interrupted.
+                self.fp.seek(self.start_dir)
+                self.NameToInfo = dict((i.filename, i) for i in self.filelist)
+                self._writing = False
 
     def _write_end_record(self):
-        if not self.DELETE_IS_INSECURE:
-            self.compact(threshold=self.COMPACTING_THRESHOLD)
+        if not self.insecure_delete:
+            self.compact(threshold=self.compacting_threshold)
         return super()._write_end_record()
 
 
