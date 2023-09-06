@@ -2646,26 +2646,41 @@ class ZipFileRW(ZipFile):
         the source and destination is only allowed if moving backwards.
         """
         data_bytes = self._raw_data_length(zinfo)
-        _from = zinfo.header_offset
-        _to = new_pos
+        src = zinfo.header_offset
+        dst = new_pos
 
-        if _from != _to:
-            if _from < _to < _from + data_bytes:
+        if src != dst:
+            if src < dst < src + data_bytes:
                 raise io.UnsupportedOperation(
-                    'Overlapping ranges are only safe when moving backwards')
+                    'Overlapping moves are only safe when moving backwards')
+
+            # Overlapping moves risk corrupting the archive if we are
+            # interrupted. We at least try to handle that!
+            overlap = (dst < src < dst + data_bytes)
+            interrupted = None
 
             self._didModify = True
-            _bytes = data_bytes
-            while _bytes > 0:
-                self.fp.seek(_from)
-                data = self.fp.read(min(_bytes, 256*1024))
-                self.fp.seek(_to)
-                self.fp.write(data)
-                _bytes -= len(data)
-                _from += len(data)
-                _to += len(data)
-            self.fp.seek(self.start_dir)
-            zinfo.header_offset = new_pos
+            chunk_size = 256 * 1024
+            try:
+                for ofs in range(0, data_bytes, chunk_size):
+                    while True:
+                        try:
+                            self.fp.seek(src + ofs)
+                            chunk = self.fp.read(min(chunk_size, data_bytes - ofs))
+                            self.fp.seek(dst + ofs)
+                            self.fp.write(chunk)
+                            break
+                        except KeyboardInterrupt as e:
+                            interrupted = e
+                            if not overlap:
+                                # Aborting part way through is fine, old data is
+                                # intact. Respect user wishes and abort.
+                                raise
+                zinfo.header_offset = new_pos
+                if interrupted is not None:
+                    raise KeyboardInterrupt(interrupted)
+            finally:
+                self.fp.seek(self.start_dir)
         return new_pos + data_bytes
 
     def delete(self, zinfo_or_arcname):
