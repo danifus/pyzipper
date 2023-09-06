@@ -580,7 +580,7 @@ class AbstractTestsWithRandomBinaryFiles:
             if partial_enc:
                 testdata = zipfp.read(TESTFN)  # Unencrypted: succeeds
                 try:
-                    unreadable = zipfp.read('another.name')  # Encrypted: fails
+                    zipfp.read('another.name')  # Encrypted: should fail
                     self.assertFalse('not reached')
                 except RuntimeError:
                     pass  # Good! Reading encrypted data failed.
@@ -751,7 +751,7 @@ class AbstractTestZip64InSmallFiles:
 
             directory = fp.getvalue()
             lines = directory.splitlines()
-            self.assertEqual(len(lines), 4) # Number of files + header
+            self.assertEqual(len(lines), 4)  # Number of files + header
 
             self.assertIn('File Name', lines[0])
             self.assertIn('Modified', lines[0])

@@ -12,7 +12,6 @@ from .zipfile import (
     ZIP_LZMA,
     BadZipFile,
     BaseZipDecrypter,
-    ZipFile,
     ZipFileRW,
     ZipInfo,
     ZipExtFile,

@@ -2008,7 +2008,9 @@ class ZipFile:
 
         if mode == 'w':
             return self._open_to_write(zinfo,
-                force_zip64=force_zip64, pwd=pwd, encrypt=encrypt)
+                                       force_zip64=force_zip64,
+                                       pwd=pwd,
+                                       encrypt=encrypt)
 
         if self._writing:
             raise ValueError("Can't read from the ZIP file while there "
@@ -2565,14 +2567,13 @@ class ZipFileRW(ZipFile):
                            wasting space. It will also leave "DELETED"
                            entries the directory until compacted.
     """
-    DELETED_JUNK   = b'DELETED!' * 1024
+    DELETED_JUNK = b'DELETED!' * 1024
     DELETED_FN_FMT = 'DELETED/%s'
 
     # Subclasses can override these to adjust defaults, which will make
     # sense for apps that know what their use profile is.
     INSECURE_DELETE = False
-    COMPACTING_THRESHOLD = 0.0   # Set to a ratio of allowable wasted space,
-                                 # to reduce the I/O overhead of deletion.
+    COMPACTING_THRESHOLD = 0.0
 
     def __init__(self, *args, **kwargs):
         """
