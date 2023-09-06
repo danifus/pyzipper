@@ -2191,7 +2191,7 @@ class ZipFile:
                                    " would require ZIP64 extensions")
 
     def write(self, filename, arcname=None,
-              compress_type=None, compresslevel=None):
+              compress_type=None, compresslevel=None, encrypt=True):
         """Put the bytes from filename into the archive under the name
         arcname."""
         if not self.fp:
@@ -2236,7 +2236,7 @@ class ZipFile:
                 self.fp.write(zinfo.FileHeader(False))
                 self.start_dir = self.fp.tell()
         else:
-            with open(filename, "rb") as src, self.open(zinfo, 'w') as dest:
+            with open(filename, "rb") as src, self.open(zinfo, 'w', encrypt=encrypt) as dest:
                 shutil.copyfileobj(src, dest, 1024*8)
 
     def writestr(self, zinfo_or_arcname, data,
