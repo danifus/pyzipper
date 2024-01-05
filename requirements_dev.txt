@@ -4,7 +4,7 @@ twine>=1.12.1
 wheel>=0.32.1
 
 # fixed version of pycryptodomex so pyup bot can send PR's on updates
-pycryptodomex==3.7.3
+pycryptodomex==3.19.1
 
 # documentation dependencies
 Sphinx>=1.8.1
