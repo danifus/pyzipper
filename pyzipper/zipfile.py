@@ -1163,11 +1163,12 @@ class ZipExtFile(io.BufferedIOBase):
     # Chunk size to read during seek
     MAX_SEEK_READ = 1 << 24
 
-    def __init__(self, fileobj, mode, zipinfo, close_fileobj=False, pwd=None):
+    def __init__(self, fileobj, mode, zipinfo, close_fileobj=False, pwd=None, metadata_encoding=None):
         self._fileobj = fileobj
         self._zinfo = zipinfo
         self._close_fileobj = close_fileobj
         self._pwd = pwd
+        self.metadata_encoding = metadata_encoding
 
         self.process_local_header()
         self.raise_for_unsupported_flags()
@@ -1239,11 +1240,15 @@ class ZipExtFile(io.BufferedIOBase):
         if fheader[_FH_EXTRA_FIELD_LENGTH]:
             self._fileobj.read(fheader[_FH_EXTRA_FIELD_LENGTH])
 
-        if self._zinfo.is_utf_filename:
-            # UTF-8 filename
-            fname_str = fname.decode("utf-8")
+        # Decode filename with an encoding
+        if self.metadata_encoding is not None:
+            fname_str = fname.decode(self.metadata_encoding)
+        elif self._zinfo.is_utf_filename:
+            # UTF-8 file names extension
+            fname_str = fname.decode('utf-8')
         else:
-            fname_str = fname.decode("cp437")
+            # Historical ZIP filename encoding
+            fname_str = fname.decode('cp437')
 
         if fname_str != self._zinfo.orig_filename:
             raise BadZipFile(
@@ -1691,7 +1696,7 @@ class ZipFile:
     zipwritefile_cls = _ZipWriteFile
 
     def __init__(self, file, mode="r", compression=ZIP_STORED, allowZip64=True,
-                 compresslevel=None, *, strict_timestamps=True):
+                 compresslevel=None, *, strict_timestamps=True, metadata_encoding=None):
         """Open the ZIP file with mode read 'r', write 'w', exclusive create
         'x', or append 'a'."""
         if mode not in ('r', 'w', 'x', 'a'):
@@ -1712,6 +1717,7 @@ class ZipFile:
         self.encryption_kwargs = None
         self._comment = b''
         self._strict_timestamps = strict_timestamps
+        self.metadata_encoding = metadata_encoding
 
         # Check if we were passed a file-like object
         # os.PathLike and os.fspath were added in python 3.6
@@ -1848,12 +1854,17 @@ class ZipFile:
                 print(centdir)
             filename = fp.read(centdir[_CD_FILENAME_LENGTH])
             flags = centdir[5]
-            if flags & _MASK_UTF_FILENAME:
+
+            # Decode filename with an encoding
+            if self.metadata_encoding is not None:
+                filename = filename.decode(self.metadata_encoding)
+            elif flags & _MASK_UTF_FILENAME:
                 # UTF-8 file names extension
                 filename = filename.decode('utf-8')
             else:
                 # Historical ZIP filename encoding
                 filename = filename.decode('cp437')
+
             # Create ZipInfo instance to store file information
             x = self.zipinfo_cls(filename)
             x.extra = fp.read(centdir[_CD_EXTRA_FIELD_LENGTH])
@@ -2020,7 +2031,7 @@ class ZipFile:
         zef_file = _SharedFile(self.fp, zinfo.header_offset,
                                self._fpclose, self._lock, lambda: self._writing)
         try:
-            return self.zipextfile_cls(zef_file, mode, zinfo, True, pwd)
+            return self.zipextfile_cls(zef_file, mode, zinfo, True, pwd, self.metadata_encoding)
         except Exception as e:
             zef_file.close()
             raise e
