@@ -12,7 +12,7 @@ from .zipfile import (
     ZIP_LZMA,
     BadZipFile,
     BaseZipDecrypter,
-    ZipFile,
+    ZipFileRW,
     ZipInfo,
     ZipExtFile,
 )
@@ -272,6 +272,15 @@ class AESZipInfo(ZipInfo):
         self.wz_aes_vendor_id = None
         self.wz_aes_strength = None
 
+    def __repr__(self):
+        r = [super().__repr__()[:-1]]
+        r.extend([
+             ' wz_aes_version=%s' % self.wz_aes_version,
+             ' wz_aes_vendor_id=%s' % self.wz_aes_vendor_id,
+             ' wz_aes_strength=%s' % self.wz_aes_strength,
+             '>'])
+        return ''.join(r)
+
     def decode_extra_wz_aes(self, ln, extra):
         if ln == 7:
             counts = struct.unpack("<H2sBH", extra[4: ln+4])
@@ -364,7 +373,7 @@ class AESZipExtFile(ZipExtFile):
         return AESZipDecrypter
 
     def setup_decrypter(self):
-        if self._zinfo.wz_aes_version is not None:
+        if self._zinfo.wz_aes_vendor_id is not None:
             return self.setup_aeszipdecrypter()
         return super().setup_decrypter()
 
@@ -400,7 +409,7 @@ class AESZipExtFile(ZipExtFile):
             super().check_integrity()
 
 
-class AESZipFile(ZipFile):
+class AESZipFile(ZipFileRW):
     zipinfo_cls = AESZipInfo
     zipextfile_cls = AESZipExtFile
 
