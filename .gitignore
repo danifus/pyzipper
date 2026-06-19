@@ -1,5 +1,7 @@
 build/
 dist/
+venv/
+.venv/
 pyzipper.egg-info
 *.pyc
 *.swp
