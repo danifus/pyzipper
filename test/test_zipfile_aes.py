@@ -212,6 +212,53 @@ class WZAESKnownFileTests(unittest.TestCase):
             with self.assertRaises(
                     zipfile_aes.BadZipFile, msg=exception_msg):
                 zipfp.read('test.txt', pwd=b'test')
+    
+    @requires_zlib
+    def test_decrypt_deflated_aes_with_unread_compressed_tail(self):
+        """DEFLATED AES entries drain remaining compressed bytes before HMAC.
+
+        AES HMAC is calculated over the full encrypted compressed byte stream.
+        A DEFLATED stream may reach the expected uncompressed size while
+        compressed bytes still remain unread. Those bytes must be consumed
+        before reading the 10-byte authentication code.
+        """
+        data = (
+            b'PK\x03\x04\x14\x00\x01\x00c\x00\x83n\xd3\\\xa6?\xb2uW'
+            b'\x00\x00\x00\'\n\x00\x00\x08\x00\x0b\x00test.txt'
+            b'\x01\x99\x07\x00\x01\x00AE\x01\x08\x00'
+            b'muv\x16\xf8RM\xb4\x9f\xea\xf0\xfd~\xf6\xe1zx'
+            b'\xfc\xaf\xc1\x99}\xf5\xb29\xce\xeb\xdb\x18\x033'
+            b'\x99\xdd\xce\x85~\x9a+\x1ar\xf3\xafi~H\x180'
+            b'\x9ep\xed\x9e\xcd+\x9dbY\xc8\xc4\xdfJ\xa3\xc5'
+            b'\xd1_f\x9b\xeb]\x7frJ\xcd5?e\xac\x99\x85\x92'
+            b'\xb3\r\x81\x04\xcf\xd0\xa9\xd4'
+            b'PK\x01\x02\x14\x03\x14\x00\x01\x00c\x00\x83n\xd3\\'
+            b'\xa6?\xb2uW\x00\x00\x00\'\n\x00\x00\x08\x00\x0b\x00'
+            b'\x00\x00\x00\x00\x00\x00\x00\x00\x80\x01\x00\x00'
+            b'\x00\x00test.txt\x01\x99\x07\x00\x01\x00AE\x01\x08\x00'
+            b'PK\x05\x06\x00\x00\x00\x00\x01\x00\x01\x00A\x00\x00'
+            b'\x00\x88\x00\x00\x00\x00\x00'
+        )
+        fname = TESTFN
+        with open(fname, "wb") as fp:
+            fp.write(data)
+
+        with zipfile_aes.AESZipFile(fname, "r") as zipfp:
+            zipfp.setpassword(b"test")
+            with zipfp.open("test.txt") as zf:
+                # Read one byte at a time so the expected uncompressed size is
+                # reached while a compressed tail byte may remain unread.
+                zf.MIN_READ_SIZE = 1
+                chunks = []
+                char = zf.read(1)
+                while char:
+                    chunks.append(char)
+                    char = zf.read(1)
+
+        content = b"".join(chunks)
+        self.assertEqual(len(content), 2599)
+        self.assertEqual(zipfile.crc32(content) & 0xffffffff, 0x75b23fa6)
+
 
 
 @requires_pycrypto
@@ -1208,7 +1255,7 @@ class StoredTestZip64InSmallFiles(AbstractTestZip64InSmallFiles,
             self.set_pwd_if_needed(zipfp)
             zinfo = zipfp.getinfo("strfile")
             self.assertEqual(zinfo.extra, extra)
-
+    
 
 @requires_zlib
 class DeflateTestZip64InSmallFiles(AbstractTestZip64InSmallFiles,
