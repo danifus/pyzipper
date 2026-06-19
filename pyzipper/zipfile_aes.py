@@ -10,6 +10,7 @@ from Cryptodome import Random
 from .zipfile import (
     ZIP_BZIP2,
     ZIP_LZMA,
+    ZIP_STORED,
     BadZipFile,
     BaseZipDecrypter,
     ZipFile,
@@ -369,18 +370,26 @@ class AESZipExtFile(ZipExtFile):
         return super().setup_decrypter()
 
     def check_wz_aes(self):
-        if self._zinfo.compress_type == ZIP_LZMA:
-            # LZMA may have an end of stream marker or padding. Make sure we
-            # read that to get the proper HMAC of the compressed byte stream.
-            while self._compress_left > 0:
-                data = self._read2(self.MIN_READ_SIZE)
-                # but we don't want to find any more data here.
-                data = self._decompressor.decompress(data)
+        # AES HMAC is calculated over the full encrypted compressed data stream.
+        # Some decompressors may reach EOF / uncompressed size before all compressed
+        # bytes have been consumed, so drain the remaining compressed bytes before
+        # reading the 10-byte authentication code.
+        while self._compress_left > 0:
+            data = self._read2(self.MIN_READ_SIZE)
+            if self._zinfo.compress_type == ZIP_STORED:
                 if data:
                     raise BadZipFile(
                         "More data found than indicated by uncompressed size for "
-                        "'{}'".format(self.filename)
+                        "{!r}".format(self._zinfo.filename)
                     )
+                continue
+
+            extra_data = self._decompressor.decompress(data)
+            if extra_data:
+                raise BadZipFile(
+                    "More data found than indicated by uncompressed size for "
+                    "{!r}".format(self._zinfo.filename)
+                )
 
         hmac_check = self._fileobj.read(self._decrypter.hmac_size)
         self._decrypter.check_hmac(hmac_check)
