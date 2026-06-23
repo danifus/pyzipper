@@ -63,6 +63,11 @@ except ImportError:
     lzma = None
 
 try:
+    from compression import zstd
+except ImportError:
+    zstd = None
+
+try:
     import resource
 except ImportError:
     resource = None
@@ -89,7 +94,7 @@ __all__ = [
     "transient_internet", "BasicTestRunner", "run_unittest", "run_doctest",
     "skip_unless_symlink", "requires_gzip", "requires_bz2", "requires_lzma",
     "bigmemtest", "bigaddrspacetest", "cpython_only", "get_attribute",
-    "requires_IEEE_754", "skip_unless_xattr", "requires_zlib",
+    "requires_IEEE_754", "skip_unless_xattr", "requires_zlib", "requires_zstd",
     "anticipate_failure", "load_package_tests", "detect_api_mismatch",
     "check__all__", "skip_unless_bind_unix_socket",
     "ignore_warnings",
@@ -811,6 +816,8 @@ requires_gzip = unittest.skipUnless(gzip, 'requires gzip')
 requires_bz2 = unittest.skipUnless(bz2, 'requires bz2')
 
 requires_lzma = unittest.skipUnless(lzma, 'requires lzma')
+
+requires_zstd = unittest.skipUnless(zstd, 'requires zstd')
 
 is_jython = sys.platform.startswith('java')
 

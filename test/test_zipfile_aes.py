@@ -8,6 +8,7 @@ from random import randint, random
 from test.support import unlink
 from .test_zipfile import (
     TESTFN, TESTFN2, Unseekable, get_files, requires_bz2, requires_zlib, requires_lzma,
+    requires_zstd,
 )
 
 from pyzipper import zipfile
@@ -374,6 +375,7 @@ class WZAESTests(unittest.TestCase):
             zipfile.ZIP_DEFLATED,
             zipfile.ZIP_BZIP2,
             zipfile.ZIP_LZMA,
+            zipfile.ZIP_ZSTANDARD,
         ]:
             for i in [1, 10, 19, 20, 200, 1000]:
                 with self.subTest(f"{compress_method}: content length: {i}"):
@@ -992,6 +994,13 @@ class WZAESLzmaTestsWithRandomBinaryFiles(AbstractTestsWithRandomBinaryFiles,
     pwd = b'this is a test password'
 
 
+@requires_pycrypto
+@requires_zstd
+class WZAESZstdTestsWithRandomBinaryFiles(AbstractTestsWithRandomBinaryFiles,
+                                          unittest.TestCase):
+    compression = zipfile.ZIP_ZSTANDARD
+    encryption = zipfile_aes.WZ_AES
+    pwd = b'this is a test password'
 class AbstractTestZip64InSmallFiles:
     # These tests test the ZIP64 functionality without using large files,
     # see test_zipfile64 for proper tests.
@@ -1236,6 +1245,13 @@ class LzmaTestZip64InSmallFiles(AbstractTestZip64InSmallFiles,
     encryption_kwargs = {'nbits': 128}
     pwd = b'this is a test password'
 
+@requires_zstd
+class ZstdTestZip64InSmallFiles(AbstractTestZip64InSmallFiles,
+                                unittest.TestCase):
+    compression = zipfile.ZIP_ZSTANDARD
+    encryption = zipfile_aes.WZ_AES
+    encryption_kwargs = {'nbits': 128}
+    pwd = b'this is a test password'
 
 if __name__ == "__main__":
     unittest.main()
