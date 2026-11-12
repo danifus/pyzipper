@@ -10,7 +10,8 @@ if len(sys.argv) > 1:
     elif test_type == 'aes':
         names.extend([
             'test.test_zipfile_aes',
-            'test.test_zipfile2'
+            'test.test_zipfile2',
+            'test.test_path'
         ])
 else:
     names.append('test.test_zipfile')
