@@ -34,6 +34,25 @@ Usage
        zf.setpassword(secret_password)
        my_secrets = zf.read('test.txt')
 
+``pyzipper.Path`` gives a ``pathlib``-like interface to the members of an
+archive. It is the equivalent of ``zipfile.Path`` from the standard library
+with support for encrypted archives (requires Python 3.8+):
+
+.. code-block:: python
+
+   root = pyzipper.Path('new_test.zip', pwd=secret_password)
+
+   for path in root.iterdir():
+       print(path.name, path.is_dir())
+
+   my_secrets = (root / 'test.txt').read_text(encoding='utf-8')
+
+``Path`` accepts a filename or an existing ``pyzipper.ZipFile`` /
+``AESZipFile`` object. ``pwd`` sets the default password of the underlying
+zipfile, like ``setpassword()``; a password for a single member can be passed
+with ``path.open('rb', pwd=...)``. Listing and traversing an archive does not
+need the password, only reading or writing members does.
+
 
 CRC32 Values
 ------------

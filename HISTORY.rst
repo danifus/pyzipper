@@ -2,6 +2,11 @@
 History
 =======
 
+Unreleased
+----------
+* Add ``pyzipper.Path``, a ``zipfile.Path`` equivalent that works with
+  ``AESZipFile`` and encrypted archives (Python 3.8+).
+
 0.4.0 (2026-05-13)
 ------------------
 * Update package to use pyproject.toml
